@@ -75,6 +75,39 @@ struct SplitConfig {
     divider_size: f32,
 }
 
+/// The single source of truth for a split's primary-axis geometry. The divider
+/// is removed before either pane minimum is applied, so layout, hit testing,
+/// and drag updates all describe the same two panes. When both declared
+/// minima do not fit, both remain hard minimums and the second pane overflows
+/// the trailing edge; the outer split clips that overflow.
+#[derive(Clone, Copy)]
+struct SplitGeometry {
+    ratio: f32,
+    primary: f32,
+    secondary: f32,
+}
+
+impl SplitGeometry {
+    fn new(config: SplitConfig, bounds: Bounds<Pixels>, requested_ratio: f32) -> Self {
+        let available = (f32::from(config.direction.extent(bounds)) - config.divider_size).max(0.0);
+        let requested_primary = requested_ratio.clamp(0.0, 1.0) * available;
+        let (primary, secondary) = if config.min_size + config.min_second_size <= available {
+            let primary = requested_primary.clamp(config.min_size, available - config.min_second_size);
+            (primary, available - primary)
+        } else {
+            // Do not silently shrink a declared minimum. Keep the divider in
+            // the parent axis and let the trailing pane be clipped instead.
+            let primary = requested_primary.max(config.min_size);
+            (primary, (available - primary).max(config.min_second_size))
+        };
+        Self {
+            ratio: if available > 0.0 { primary / available } else { 0.0 },
+            primary,
+            secondary,
+        }
+    }
+}
+
 #[derive(Default)]
 struct DragState {
     active: bool,
@@ -124,9 +157,21 @@ impl CustomElement for SplitViewElement {
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
-        let ratio = self.state.borrow().ratio;
         let config = self.config();
-        let mut outer = gpui::div().relative().flex().min_w_0().min_h_0();
+        // A previous prepaint gives us the current definite split extent. Keep
+        // the stored ratio canonical before building the panes, including for
+        // controlled/default updates and a later bounds change.
+        let previous_bounds = self.state.borrow().bounds;
+        let geometry = previous_bounds.map(|bounds| {
+            let mut state = self.state.borrow_mut();
+            let geometry = SplitGeometry::new(config, bounds, state.ratio);
+            state.ratio = geometry.ratio;
+            geometry
+        });
+        let ratio = geometry.map_or(self.state.borrow().ratio, |geometry| geometry.ratio);
+        // Under an undersized axis SplitGeometry deliberately keeps both
+        // declared minima. Clip the deterministic trailing overflow here.
+        let mut outer = gpui::div().relative().flex().min_w_0().min_h_0().overflow_hidden();
         if config.direction == Direction::Horizontal {
             outer = outer.flex_row();
         } else {
@@ -139,16 +184,46 @@ impl CustomElement for SplitViewElement {
         let mut children = ctx.children.into_iter();
         let first = children.next().unwrap_or_else(|| gpui::Empty.into_any_element());
         let second = children.next().unwrap_or_else(|| gpui::Empty.into_any_element());
-        let (first, divider, second) = match config.direction {
-            Direction::Horizontal => (
-                gpui::div().flex_grow(ratio).flex_shrink(1.0).min_w_0().min_h_0().child(first),
+        let (first, divider, second) = match (config.direction, geometry) {
+            (Direction::Horizontal, Some(geometry)) => (
+                gpui::div().w(px(geometry.primary)).flex_none().min_w(px(config.min_size.min(geometry.primary))).min_h_0().flex().flex_col().child(first),
                 gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
-                gpui::div().flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_w_0().min_h_0().child(second),
+                gpui::div().w(px(geometry.secondary)).flex_none().min_w(px(config.min_second_size.min(geometry.secondary))).min_h_0().flex().flex_col().child(second),
             ),
-            Direction::Vertical => (
-                gpui::div().flex_grow(ratio).flex_shrink(1.0).min_w_0().min_h_0().child(first),
+            (Direction::Vertical, Some(geometry)) => (
+                gpui::div().h(px(geometry.primary)).flex_none().min_h(px(config.min_size.min(geometry.primary))).min_w_0().flex().flex_col().child(first),
                 gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
-                gpui::div().flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_w_0().min_h_0().child(second),
+                gpui::div().h(px(geometry.secondary)).flex_none().min_h(px(config.min_second_size.min(geometry.secondary))).min_w_0().flex().flex_col().child(second),
+            ),
+            (Direction::Horizontal, None) if ratio <= 0.0 => (
+                gpui::div().w(px(config.min_size)).flex_none().min_h_0().child(first),
+                gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
+                gpui::div().flex_grow(1.0).min_w(px(config.min_second_size)).min_h_0().child(second),
+            ),
+            (Direction::Horizontal, None) if ratio >= 1.0 => (
+                gpui::div().flex_grow(1.0).min_w(px(config.min_size)).min_h_0().child(first),
+                gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
+                gpui::div().w(px(config.min_second_size)).flex_none().min_h_0().child(second),
+            ),
+            (Direction::Horizontal, None) => (
+                gpui::div().w(px(config.min_size)).flex_grow(ratio).flex_shrink(1.0).min_w(px(config.min_size)).min_h_0().child(first),
+                gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
+                gpui::div().w(px(config.min_second_size)).flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_w(px(config.min_second_size)).min_h_0().child(second),
+            ),
+            (Direction::Vertical, None) if ratio <= 0.0 => (
+                gpui::div().h(px(config.min_size)).flex_none().min_w_0().child(first),
+                gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
+                gpui::div().flex_grow(1.0).min_h(px(config.min_second_size)).min_w_0().child(second),
+            ),
+            (Direction::Vertical, None) if ratio >= 1.0 => (
+                gpui::div().flex_grow(1.0).min_h(px(config.min_size)).min_w_0().child(first),
+                gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
+                gpui::div().h(px(config.min_second_size)).flex_none().min_w_0().child(second),
+            ),
+            (Direction::Vertical, None) => (
+                gpui::div().h(px(config.min_size)).flex_grow(ratio).flex_shrink(1.0).min_h(px(config.min_size)).min_w_0().child(first),
+                gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
+                gpui::div().h(px(config.min_second_size)).flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_h(px(config.min_second_size)).min_w_0().child(second),
             ),
         };
         let overlay = SplitHandleElement {
@@ -235,7 +310,8 @@ impl SplitHandleElement {
     fn divider_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
         let extent = f32::from(self.config.direction.extent(bounds));
         let origin = f32::from(self.config.direction.origin(bounds));
-        let divider_origin = origin + (extent - self.config.divider_size).max(0.0) * self.state.borrow().ratio;
+        let ratio = SplitGeometry::new(self.config, bounds, self.state.borrow().ratio).ratio;
+        let divider_origin = origin + (extent - self.config.divider_size).max(0.0) * ratio;
         match self.config.direction {
             Direction::Horizontal => Bounds::new(
                 gpui::point(px(divider_origin), bounds.top()),
@@ -282,17 +358,26 @@ impl Element for SplitHandleElement {
         bounds: Bounds<Pixels>,
         _: &mut (),
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> SplitHandlePrepaint {
-        let active = {
+        let (active, geometry_changed) = {
             let mut state = self.state.borrow_mut();
             if state.active && state.bounds.is_some_and(|previous| previous != bounds) {
                 state.active = false;
                 window.release_pointer();
             }
+            let ratio = SplitGeometry::new(self.config, bounds, state.ratio).ratio;
+            let geometry_changed = state.ratio != ratio;
+            state.ratio = ratio;
             state.bounds = Some(bounds);
-            state.active
+            (state.active, geometry_changed)
         };
+        // Initial/default and controlled ratios only gain a definite extent
+        // during prepaint. Schedule exactly one native follow-up frame when
+        // canonicalization changes it so the panes never retain raw geometry.
+        if geometry_changed {
+            cx.notify(window.current_view());
+        }
         let divider_bounds = self.divider_bounds(bounds);
         let hitbox = window.insert_hitbox(divider_bounds, HitboxBehavior::BlockMouse);
         if active {
@@ -346,13 +431,10 @@ impl Element for SplitHandleElement {
                         cx.notify(current_view);
                         return;
                     }
-                    let extent = f32::from(config.direction.extent(bounds));
-                    let available = (extent - config.divider_size).max(0.0);
+                    let available = (f32::from(config.direction.extent(bounds)) - config.divider_size).max(0.0);
                     if available > 0.0 {
                         let raw = f32::from(config.direction.coordinate(event.position) - config.direction.origin(bounds)) - config.divider_size / 2.0;
-                        let min_primary = config.min_size.min(available);
-                        let max_primary = (available - config.min_second_size).max(min_primary);
-                        state.borrow_mut().ratio = (raw.clamp(min_primary, max_primary) / available).clamp(0.0, 1.0);
+                        state.borrow_mut().ratio = SplitGeometry::new(config, bounds, raw / available).ratio;
                         cx.notify(current_view);
                     }
                 }
