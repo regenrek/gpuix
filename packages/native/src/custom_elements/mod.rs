@@ -20,6 +20,7 @@ pub mod diff;
 pub mod img;
 pub mod input;
 pub mod markdown;
+pub mod split_view;
 
 // ── Render context ───────────────────────────────────────────────────
 
@@ -113,6 +114,13 @@ pub trait CustomElement: 'static {
 
     /// Clean up resources (GPUI entities, subscriptions, etc.)
     fn destroy(&mut self);
+
+    /// Clean up resources that are owned by the active window, such as pointer
+    /// capture. Most adapters have no window-owned state, so preserve their
+    /// existing cleanup implementation by default.
+    fn destroy_with_window(&mut self, _window: &mut gpui::Window) {
+        self.destroy();
+    }
 }
 
 /// Factory for creating CustomElement instances.
@@ -192,6 +200,7 @@ impl CustomElementRegistry {
         registry.register(Box::new(code::CodeFactory));
         registry.register(Box::new(diff::DiffFactory));
         registry.register(Box::new(markdown::MarkdownFactory));
+        registry.register(Box::new(split_view::SplitViewFactory));
         registry
     }
 
@@ -202,13 +211,22 @@ impl CustomElementRegistry {
 
     /// Get an existing adapter or create one via the registered factory.
     /// Reusing an ID for another type destroys the old adapter first.
-    fn get_or_create(&mut self, id: u64, element_type: &str) -> Option<&mut CustomElementEntry> {
+    fn get_or_create(
+        &mut self,
+        id: u64,
+        element_type: &str,
+        window: Option<&mut gpui::Window>,
+    ) -> Option<&mut CustomElementEntry> {
         if self
             .instances
             .get(&id)
             .is_some_and(|entry| entry.element_type != element_type)
         {
-            self.destroy(id);
+            if let Some(window) = window {
+                self.destroy_with_window(id, window);
+            } else {
+                self.destroy(id);
+            }
         }
 
         match self.instances.entry(id) {
@@ -235,7 +253,7 @@ impl CustomElementRegistry {
     ) -> gpui::AnyElement {
         use gpui::IntoElement;
 
-        let Some(entry) = self.get_or_create(ctx.id, element_type) else {
+        let Some(entry) = self.get_or_create(ctx.id, element_type, Some(window)) else {
             log::warn!("Unknown element type: {element_type}");
             return gpui::Empty.into_any_element();
         };
@@ -262,8 +280,15 @@ impl CustomElementRegistry {
         }
     }
 
+    /// Destroy an adapter while its window is available.
+    pub fn destroy_with_window(&mut self, id: u64, window: &mut gpui::Window) {
+        if let Some(mut entry) = self.instances.remove(&id) {
+            entry.element.destroy_with_window(window);
+        }
+    }
+
     /// Remove and destroy instances whose IDs no longer exist in the tree.
-    pub fn prune_missing<F>(&mut self, mut is_live: F)
+    pub fn prune_missing<F>(&mut self, mut is_live: F, window: &mut gpui::Window)
     where
         F: FnMut(u64) -> bool,
     {
@@ -275,7 +300,7 @@ impl CustomElementRegistry {
             .collect();
 
         for id in stale_ids {
-            self.destroy(id);
+            self.destroy_with_window(id, window);
         }
     }
 }
@@ -391,8 +416,8 @@ mod tests {
             }));
         }
 
-        assert!(registry.get_or_create(42, "first").is_some());
-        assert!(registry.get_or_create(42, "second").is_some());
+        assert!(registry.get_or_create(42, "first", None).is_some());
+        assert!(registry.get_or_create(42, "second", None).is_some());
         assert_eq!(destroyed.get(), 1);
     }
 }

@@ -21,9 +21,13 @@ export const gpuixComponents = {
   textarea: "textarea",
   anchored: "anchored",
   "virtual-list": "virtual-list",
+  "split-view": "split-view",
 } as const
 
 export type GpuixComponentType = keyof typeof gpuixComponents
+
+export { SplitView } from "./split-view.js"
+export type { SplitViewProps } from "./split-view.js"
 
 export interface MotionDivProps extends MotionProps {
   children?: ReactNode

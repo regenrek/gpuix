@@ -401,6 +401,11 @@ export interface EventPayload {
   startIndex?: number
   /** Exclusive end of the visible logical range. Populated for: visibleRange. */
   endIndex?: number
+  /**
+   * Final normalized primary-pane size. Populated by `<split-view>` only
+   * after a native drag commits; pointer moves never cross the FFI boundary.
+   */
+  ratio?: number
   modifiers?: EventModifiers
 }
 

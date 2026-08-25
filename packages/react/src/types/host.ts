@@ -149,6 +149,7 @@ export type ElementType =
   | "diff"
   | "markdown"
   | "virtual-list"
+  | "split-view"
 
 // ── Theme ────────────────────────────────────────────────────────────
 
@@ -288,6 +289,8 @@ export interface Props {
   onLineClick?: (event: EventPayload) => void
   onLinkClick?: (event: EventPayload) => void
   onVisibleRange?: (event: EventPayload) => void
+  /** Fires once when a native split drag commits. */
+  onResize?: (event: EventPayload) => void
 
   // ── Focus props ────────────────────────────────────────────────
   /** Take keyboard focus when the element first mounts. Required for `<input>`:

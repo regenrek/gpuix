@@ -60,11 +60,13 @@ export type {
   TooltipTriggerProps,
 } from "./components/tooltip.js"
 export { motion, VirtualList } from "./components/index.js"
+export { SplitView } from "./components/split-view.js"
 export type { Root, FrameLoop, RenderOptions } from "./reconciler/renderer.js"
 export type { WindowSize } from "./hooks/use-window-size.js"
 
 // Re-export types
 export type { MotionDivProps, WindowedVirtualListProps } from "./components/index.js"
+export type { SplitViewProps } from "./components/split-view.js"
 export type {
   DebugFrameOverlayMode,
   DebugFrameOverlayStats,

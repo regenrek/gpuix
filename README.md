@@ -1203,10 +1203,39 @@ Bash, TOML, YAML, Markdown, HTML, CSS, C.
 | `input`         | Native single-line text editor                   |
 | `textarea`      | Native multiline, auto-growing text editor       |
 | `virtual-list`  | Long collections; only visible rows are built    |
+| `SplitView`     | Native two-pane resizable layout                 |
 | `img`           | Local raster or SVG images                       |
 | `svg`           | Tintable monochrome SVG icons from source or disk |
 | `anchored`      | Positioned overlay                               |
 | `canvas`        | Custom drawing (planned)                         |
+
+### SplitView
+
+`SplitView` is a native, two-pane layout with a reserved divider. It requires
+exactly two children. Use `direction="horizontal"` (the default) for a
+left/right split or `"vertical"` for a top/bottom split.
+
+```tsx
+import { SplitView } from "@gpuix/react"
+
+<SplitView
+  defaultRatio={0.35}
+  minSize={240}
+  minSecondSize={320}
+  dividerSize={6}
+  onResize={setSidebarRatio}
+>
+  <Sidebar />
+  <Workspace />
+</SplitView>
+```
+
+`ratio` controls the first pane; `defaultRatio` initializes an uncontrolled
+split. Ratios are calculated against the space remaining after `dividerSize`,
+then clamped to both minimum sizes. Dragging, pointer capture, cursor feedback,
+painting, and continuous geometry run in native GPUI. `onResize` fires once
+only when a drag ends. A pointer leaving the split, a split-bounds change, or
+unmounting cancels the drag without an event.
 
 ## Images and icons
 

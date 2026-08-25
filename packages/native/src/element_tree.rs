@@ -106,6 +106,10 @@ pub struct EventPayload {
     /// Exclusive end of the visible logical range. Populated for: visibleRange.
     pub end_index: Option<f64>,
 
+    /// Final normalized primary-pane size. Populated by `<split-view>` only
+    /// after a native drag commits; pointer moves never cross the FFI boundary.
+    pub ratio: Option<f64>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -134,6 +138,7 @@ impl Default for EventPayload {
             new_line: None,
             start_index: None,
             end_index: None,
+            ratio: None,
             modifiers: None,
         }
     }
