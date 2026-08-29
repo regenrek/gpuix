@@ -27,6 +27,10 @@ use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+#[cfg(any(
+    target_os = "macos",
+    all(target_arch = "wasm32", target_os = "unknown")
+))]
 use std::rc::Rc;
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender};
@@ -617,7 +621,7 @@ async fn run_ui_commands(
                         multiple: false,
                         prompt: None,
                     })
-                })?;
+                });
                 cx.spawn(async move |_cx| {
                     let result = prompt
                         .await
