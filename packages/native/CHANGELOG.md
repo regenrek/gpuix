@@ -1,5 +1,11 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.1
+
+### Patch Changes
+
+- Add `GpuixRenderer.writeClipboardText(text)` for desktop-native clipboard writes.
+
 ## 0.5.0-regenrek.0
 
 ### Minor Changes

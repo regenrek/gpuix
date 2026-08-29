@@ -212,6 +212,10 @@ where
     window.update(cx, |_root_view, window, cx| update(window, cx))
 }
 
+fn write_clipboard_text(cx: &mut gpui::App, text: String) {
+    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+}
+
 #[cfg(target_os = "macos")]
 fn update_window_only<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -> Result<R> {
     let window: gpui::AnyWindowHandle = GPUI_WINDOW
@@ -299,6 +303,7 @@ enum ClockControl {
 enum UiCommand {
     Invalidate,
     OpenUrl(String),
+    WriteClipboard(String),
     SetWindowTitle(String),
     SetDebugFrameOverlay(gpui::DebugFrameOverlayMode),
     CycleDebugFrameOverlay {
@@ -426,6 +431,10 @@ async fn run_ui_commands(
             UiCommand::Invalidate => refresh_ui_window(window, cx),
             UiCommand::OpenUrl(url) => {
                 cx.update(|cx| cx.open_url(&url));
+                Ok(())
+            }
+            UiCommand::WriteClipboard(text) => {
+                cx.update(move |cx| write_clipboard_text(cx, text));
                 Ok(())
             }
             UiCommand::SetWindowTitle(title) => window.update(cx, move |view, window, cx| {
@@ -1086,6 +1095,40 @@ impl GpuixRenderer {
         )))]
         {
             let _ = url;
+            Err(Error::from_reason("Unsupported operating system"))
+        }
+    }
+
+    /// Write text through GPUI's platform-owned clipboard.
+    #[napi]
+    pub fn write_clipboard_text(&self, text: String) -> Result<()> {
+        if !*self.initialized.lock().unwrap() {
+            return Err(Error::from_reason(
+                "Renderer not initialized. Call init() first.",
+            ));
+        }
+
+        #[cfg(target_os = "macos")]
+        return GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            app.update(move |cx| write_clipboard_text(cx, text));
+            Ok(())
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::WriteClipboard(text));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = text;
             Err(Error::from_reason("Unsupported operating system"))
         }
     }
@@ -2846,6 +2889,24 @@ impl Drop for GpuixRenderer {
         self.appshot.lock().unwrap().dispose_all();
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         self.ui_commands.lock().unwrap().take();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_clipboard_text_uses_gpui_test_platform() {
+        let cx = gpui::TestAppContext::single();
+        let text = "native GPUI clipboard".to_string();
+
+        cx.update(|cx| write_clipboard_text(cx, text.clone()));
+
+        assert_eq!(
+            cx.read_from_clipboard(),
+            Some(gpui::ClipboardItem::new_string(text))
+        );
     }
 }
 

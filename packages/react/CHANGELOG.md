@@ -1,5 +1,12 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.1
+
 ## 0.5.0-regenrek.0
 
 ### Minor Changes

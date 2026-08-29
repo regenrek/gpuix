@@ -47,6 +47,8 @@ export declare class GpuixRenderer {
   promptForDirectory(): Promise<string | null>
   /** Open a URL through GPUI's platform owner. */
   openUrl(url: string): void
+  /** Write text through GPUI's platform-owned clipboard. */
+  writeClipboardText(text: string): void
   createElement(id: number, elementType: string): void
   /**
    * Destroy an element and all descendants. Returns array of destroyed IDs
