@@ -193,7 +193,7 @@ jobs:
         run: |
           bunx --no-install napi create-npm-dirs
           bunx --no-install napi artifacts
-          bunx --no-install napi pre-publish --skip-optional-publish
+          bunx --no-install napi pre-publish --skip-optional-publish --no-gh-release
         working-directory: packages/native
 
       - name: List packages
