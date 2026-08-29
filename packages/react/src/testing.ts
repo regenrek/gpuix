@@ -110,6 +110,7 @@ export class TestRenderer implements NativeRenderer {
   commitCount = 0
   private directoryPromptResponse: string | null = null
   private openedUrls: string[] = []
+  private clipboardWrites: string[] = []
 
   /** Native TestGpuixRenderer — all state lives here in Rust's RetainedTree. */
   private native: NativeTestRendererApi
@@ -140,6 +141,14 @@ export class TestRenderer implements NativeRenderer {
 
   takeOpenedUrls(): string[] {
     return this.openedUrls.splice(0)
+  }
+
+  writeClipboardText(text: string): void {
+    this.clipboardWrites.push(text)
+  }
+
+  takeClipboardWrites(): string[] {
+    return this.clipboardWrites.splice(0)
   }
 
   setAppshotPermission(granted: boolean): void {

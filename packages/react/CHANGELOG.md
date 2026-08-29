@@ -1,5 +1,12 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.2
+
+### Patch Changes
+
+- Expose the desktop-native clipboard write contract through React's renderer and deterministic test adapter.
+- @regenrek/gpuix-native@0.5.0-regenrek.2
+
 ## 0.5.0-regenrek.1
 
 ### Patch Changes

@@ -479,7 +479,7 @@ type NativeAppshotRenderer = Pick<
 /// Interface for the renderer that receives mutations from the reconciler.
 /// Implemented by the real napi GpuixRenderer and by TestRenderer (which
 /// delegates to native TestGpuixRenderer for tests).
-export interface NativeRenderer extends NativeAppshotRenderer {
+export interface NativeRenderer extends NativeAppshotRenderer, Pick<GpuixRenderer, "writeClipboardText"> {
   /** Open the platform-native single-directory picker. Cancellation returns null. */
   promptForDirectory(): Promise<string | null>
   /** Open a URL through GPUI's platform owner. */
