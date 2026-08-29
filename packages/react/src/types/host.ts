@@ -1,4 +1,8 @@
-import type { EventPayload } from "@gpuix/native"
+import type {
+  EventPayload,
+  GpuixRenderer,
+} from "@regenrek/gpuix-native"
+export type { AppshotPermission, AppshotSelection } from "@regenrek/gpuix-native"
 
 export type DimensionValue = number | string
 
@@ -150,6 +154,8 @@ export type ElementType =
   | "markdown"
   | "virtual-list"
   | "split-view"
+  | "dock-workspace"
+  | "terminal"
 
 // ── Theme ────────────────────────────────────────────────────────────
 
@@ -188,6 +194,12 @@ export interface SyntaxTheme {
  * heading scale is a React re-render and needs no native rebuild.
  */
 export interface GpuixMetrics {
+  // Terminals
+  terminalTextSize?: number
+  terminalLineHeight?: number
+  terminalPaddingX?: number
+  terminalPaddingY?: number
+
   // Code blocks
   codeTextSize?: number
   codeLineHeight?: number
@@ -291,6 +303,21 @@ export interface Props {
   onVisibleRange?: (event: EventPayload) => void
   /** Fires once when a native split drag commits. */
   onResize?: (event: EventPayload) => void
+  /** Fires once after a native DockWorkspace semantic layout mutation commits. */
+  onLayoutChange?: (event: EventPayload) => void
+  /** Base64-encoded terminal keyboard bytes in `event.dataBase64`. */
+  onTerminalInput?: (event: EventPayload) => void
+  /** Native viewport measurement in `event.rows` and `event.cols`. */
+  onTerminalResize?: (event: EventPayload) => void
+
+  /** Native accessibility semantics, persisted on Rust's real retained tree. */
+  accessibilityRole?: string
+  accessibilityName?: string
+  accessibilityValue?: string
+  accessibilityDisabled?: boolean
+  accessibilityExpanded?: boolean
+  accessibilitySelected?: boolean
+  accessibilityChecked?: boolean
 
   // ── Focus props ────────────────────────────────────────────────
   /** Take keyboard focus when the element first mounts. Required for `<input>`:
@@ -310,12 +337,29 @@ export interface InputProps extends Props {
   value?: string
   placeholder?: string
   readOnly?: boolean
+  /** Mask the painted value and prevent copy/cut from exposing it. */
+  secure?: boolean
   theme?: GpuixTheme
 }
 
-export interface TextareaProps extends InputProps {
+export interface TextareaProps extends Omit<InputProps, "secure"> {
   minRows?: number
   maxRows?: number
+}
+
+export interface CanvasPoint { x: number; y: number }
+export type CanvasCommand =
+  | { type: "line"; id: string; from: CanvasPoint; to: CanvasPoint; width: number; color: string }
+  | { type: "rect"; id: string; x: number; y: number; width: number; height: number; radius?: number; color: string }
+  | { type: "circle"; id: string; center: CanvasPoint; radius: number; color: string }
+  | { type: "particle"; id: string; from: CanvasPoint; to: CanvasPoint; radius: number; color: string; durationMs: number; phaseMs?: number }
+export interface CanvasProps { commands: readonly CanvasCommand[]; visible?: boolean; motion?: "running" | "paused"; style?: StyleDesc; testId?: string; ref?: React.Ref<PublicInstance> }
+
+/** A desktop-native terminal emulator. PTY lifecycle remains host-owned. */
+export interface TerminalProps extends Props {
+  theme?: GpuixTheme
+  onTerminalInput?: (event: EventPayload) => void
+  onTerminalResize?: (event: EventPayload) => void
 }
 
 /** A variable-height list that builds only rows near its viewport. */
@@ -420,10 +464,26 @@ export interface AnchoredProps extends Props {
   occlude?: boolean
 }
 
+type NativeAppshotRenderer = Pick<
+  GpuixRenderer,
+  | "preflightAppshotPermission"
+  | "requestAppshotPermission"
+  | "selectAppshotWindow"
+  | "captureAppshotWindow"
+  | "captureFrontmostAppshot"
+  | "disposeAppshotWindow"
+  | "registerGlobalShortcut"
+  | "unregisterGlobalShortcut"
+>
+
 /// Interface for the renderer that receives mutations from the reconciler.
 /// Implemented by the real napi GpuixRenderer and by TestRenderer (which
 /// delegates to native TestGpuixRenderer for tests).
-export interface NativeRenderer {
+export interface NativeRenderer extends NativeAppshotRenderer {
+  /** Open the platform-native single-directory picker. Cancellation returns null. */
+  promptForDirectory(): Promise<string | null>
+  /** Open a URL through GPUI's platform owner. */
+  openUrl(url: string): void
   createElement(id: number, elementType: string): void
   destroyElement(id: number): Array<number>
   appendChild(parentId: number, childId: number): void
@@ -435,6 +495,10 @@ export interface NativeRenderer {
   setRoot(id: number): void
   commitMutations(): void
   setCustomProp(id: number, key: string, valueJson: string | object | number | boolean | null): void
+  /** Feed base64-encoded PTY output directly to a native `<terminal>`. */
+  terminalWrite?(elementId: number, dataBase64: string): void
+  /** Reset a native `<terminal>` while preserving its measured viewport. */
+  terminalReset?(elementId: number): void
   /** Apply a batch of mutations in a single FFI call. Returns destroyed IDs. */
   applyBatch?(json: string): Array<number>
 

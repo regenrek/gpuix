@@ -19,7 +19,7 @@
  */
 
 import React, { useState } from "react"
-import { render } from "@gpuix/react"
+import { render } from "@regenrek/gpuix-react"
 import { diffWords } from "diff"
 import {
   createHighlighter,

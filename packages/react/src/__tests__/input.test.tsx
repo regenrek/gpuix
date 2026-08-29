@@ -3,7 +3,7 @@
 
 import React, { useState } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -212,6 +212,47 @@ describeNative("native text editors", () => {
     testRoot.renderer.nativeSimulateKeystrokes(input.id, "backspace a")
 
     expect(testRoot.renderer.getAllText()).toContain("Value: locked")
+  })
+
+  it("masks secure values in paint and automation and blocks copy and cut", () => {
+    let changed = "secure-value"
+    function SecureInputs() {
+      const [secureValue, setSecureValue] = useState("secure-value")
+      const [plainValue, setPlainValue] = useState("")
+      changed = secureValue
+      return (
+        <div style={{ width: 400, height: 120 }}>
+          <input
+            testId="secure"
+            secure
+            value={secureValue}
+            style={{ width: 300, height: 40 }}
+            onChange={(event: EventPayload) => setSecureValue(event.value ?? "")}
+          />
+          <input
+            testId="plain"
+            value={plainValue}
+            style={{ width: 300, height: 40 }}
+            onChange={(event: EventPayload) => setPlainValue(event.value ?? "")}
+          />
+        </div>
+      )
+    }
+
+    testRoot.render(<SecureInputs />)
+    const secure = testRoot.renderer.findByTestId("secure")!
+    const plain = testRoot.renderer.findByTestId("plain")!
+    expect(testRoot.renderer.getPaintedText()).toContain("************")
+    expect(testRoot.renderer.getPaintedText()).not.toContain("secure-value")
+    expect(testRoot.renderer.getAutomationTree()).not.toContain("secure-value")
+    expect(JSON.stringify(testRoot.renderer.toJSON())).not.toContain("secure-value")
+
+    testRoot.renderer.focusElement(secure.id)
+    testRoot.renderer.nativeSimulateKeystrokes(secure.id, "cmd-a cmd-c cmd-x")
+    expect(changed).toBe("secure-value")
+    testRoot.renderer.focusElement(plain.id)
+    testRoot.renderer.nativeSimulateKeystrokes(plain.id, "cmd-v")
+    expect(testRoot.renderer.getPaintedText()).not.toContain("secure-value")
   })
 
   it("forwards the caret theme to the native editor", () => {

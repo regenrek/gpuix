@@ -10,11 +10,14 @@
     "build": "bun run build:native && bun run build:react",
     "build:native": "cd packages/native && bun run build",
     "build:react": "cd packages/react && bun run build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
     "example:counter": "cd examples && bun --hot counter.tsx",
     "dev": "bun scripts/dev.ts",
     "web": "bun scripts/web.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.1",
     "tsx": "^4.19.0",
     "typescript": "^5.3.0"
   },

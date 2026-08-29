@@ -31,7 +31,7 @@ async function main() {
   })
 
   fs.mkdirSync(PACKAGE_OUTPUT, { recursive: true })
-  console.log("web: generating the @gpuix/native browser loader")
+  console.log("web: generating the @regenrek/gpuix-native browser loader")
   await run({
     command: "wasm-bindgen",
     args: [WASM, "--target", "web", "--out-dir", PACKAGE_OUTPUT, "--out-name", "gpuix-web"],
@@ -43,7 +43,7 @@ async function main() {
     return
   }
 
-  console.log("web: building @gpuix/react")
+  console.log("web: building @regenrek/gpuix-react")
   await run({ command: "bun", args: ["run", "build"], cwd: path.join(ROOT, "packages", "react") })
 
   console.log("web: bundling the ChatGPT example")

@@ -4,9 +4,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    px, relative, size, App, AvailableSpace, Bounds, CursorStyle, DispatchPhase, Element, GlobalElementId,
-    Hitbox, HitboxBehavior, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseExitEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, Style, Window,
+    px, relative, size, App, AvailableSpace, Bounds, CursorStyle, DispatchPhase, Element,
+    GlobalElementId, Hitbox, HitboxBehavior, IntoElement, LayoutId, MouseButton, MouseDownEvent,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Style, Window,
 };
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
@@ -92,7 +92,8 @@ impl SplitGeometry {
         let available = (f32::from(config.direction.extent(bounds)) - config.divider_size).max(0.0);
         let requested_primary = requested_ratio.clamp(0.0, 1.0) * available;
         let (primary, secondary) = if config.min_size + config.min_second_size <= available {
-            let primary = requested_primary.clamp(config.min_size, available - config.min_second_size);
+            let primary =
+                requested_primary.clamp(config.min_size, available - config.min_second_size);
             (primary, available - primary)
         } else {
             // Do not silently shrink a declared minimum. Keep the divider in
@@ -101,7 +102,11 @@ impl SplitGeometry {
             (primary, (available - primary).max(config.min_second_size))
         };
         Self {
-            ratio: if available > 0.0 { primary / available } else { 0.0 },
+            ratio: if available > 0.0 {
+                primary / available
+            } else {
+                0.0
+            },
             primary,
             secondary,
         }
@@ -131,7 +136,11 @@ impl Default for SplitViewElement {
             min_size: 0.0,
             min_second_size: 0.0,
             divider_size: 1.0,
-            state: Rc::new(RefCell::new(DragState { active: false, ratio: 0.5, bounds: None })),
+            state: Rc::new(RefCell::new(DragState {
+                active: false,
+                ratio: 0.5,
+                bounds: None,
+            })),
             initialized: false,
         }
     }
@@ -171,7 +180,12 @@ impl CustomElement for SplitViewElement {
         let ratio = geometry.map_or(self.state.borrow().ratio, |geometry| geometry.ratio);
         // Under an undersized axis SplitGeometry deliberately keeps both
         // declared minima. Clip the deterministic trailing overflow here.
-        let mut outer = gpui::div().relative().flex().min_w_0().min_h_0().overflow_hidden();
+        let mut outer = gpui::div()
+            .relative()
+            .flex()
+            .min_w_0()
+            .min_h_0()
+            .overflow_hidden();
         if config.direction == Direction::Horizontal {
             outer = outer.flex_row();
         } else {
@@ -182,48 +196,136 @@ impl CustomElement for SplitViewElement {
         }
 
         let mut children = ctx.children.into_iter();
-        let first = children.next().unwrap_or_else(|| gpui::Empty.into_any_element());
-        let second = children.next().unwrap_or_else(|| gpui::Empty.into_any_element());
+        let first = children
+            .next()
+            .unwrap_or_else(|| gpui::Empty.into_any_element());
+        let second = children
+            .next()
+            .unwrap_or_else(|| gpui::Empty.into_any_element());
         let (first, divider, second) = match (config.direction, geometry) {
             (Direction::Horizontal, Some(geometry)) => (
-                gpui::div().w(px(geometry.primary)).flex_none().min_w(px(config.min_size.min(geometry.primary))).min_h_0().flex().flex_col().child(first),
+                gpui::div()
+                    .w(px(geometry.primary))
+                    .flex_none()
+                    .min_w(px(config.min_size.min(geometry.primary)))
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .child(first),
                 gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
-                gpui::div().w(px(geometry.secondary)).flex_none().min_w(px(config.min_second_size.min(geometry.secondary))).min_h_0().flex().flex_col().child(second),
+                gpui::div()
+                    .w(px(geometry.secondary))
+                    .flex_none()
+                    .min_w(px(config.min_second_size.min(geometry.secondary)))
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .child(second),
             ),
             (Direction::Vertical, Some(geometry)) => (
-                gpui::div().h(px(geometry.primary)).flex_none().min_h(px(config.min_size.min(geometry.primary))).min_w_0().flex().flex_col().child(first),
+                gpui::div()
+                    .h(px(geometry.primary))
+                    .flex_none()
+                    .min_h(px(config.min_size.min(geometry.primary)))
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(first),
                 gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
-                gpui::div().h(px(geometry.secondary)).flex_none().min_h(px(config.min_second_size.min(geometry.secondary))).min_w_0().flex().flex_col().child(second),
+                gpui::div()
+                    .h(px(geometry.secondary))
+                    .flex_none()
+                    .min_h(px(config.min_second_size.min(geometry.secondary)))
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(second),
             ),
             (Direction::Horizontal, None) if ratio <= 0.0 => (
-                gpui::div().w(px(config.min_size)).flex_none().min_h_0().child(first),
+                gpui::div()
+                    .w(px(config.min_size))
+                    .flex_none()
+                    .min_h_0()
+                    .child(first),
                 gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
-                gpui::div().flex_grow(1.0).min_w(px(config.min_second_size)).min_h_0().child(second),
+                gpui::div()
+                    .flex_grow(1.0)
+                    .min_w(px(config.min_second_size))
+                    .min_h_0()
+                    .child(second),
             ),
             (Direction::Horizontal, None) if ratio >= 1.0 => (
-                gpui::div().flex_grow(1.0).min_w(px(config.min_size)).min_h_0().child(first),
+                gpui::div()
+                    .flex_grow(1.0)
+                    .min_w(px(config.min_size))
+                    .min_h_0()
+                    .child(first),
                 gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
-                gpui::div().w(px(config.min_second_size)).flex_none().min_h_0().child(second),
+                gpui::div()
+                    .w(px(config.min_second_size))
+                    .flex_none()
+                    .min_h_0()
+                    .child(second),
             ),
             (Direction::Horizontal, None) => (
-                gpui::div().w(px(config.min_size)).flex_grow(ratio).flex_shrink(1.0).min_w(px(config.min_size)).min_h_0().child(first),
+                gpui::div()
+                    .w(px(config.min_size))
+                    .flex_grow(ratio)
+                    .flex_shrink(1.0)
+                    .min_w(px(config.min_size))
+                    .min_h_0()
+                    .child(first),
                 gpui::div().w(px(config.divider_size)).flex_none().min_h_0(),
-                gpui::div().w(px(config.min_second_size)).flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_w(px(config.min_second_size)).min_h_0().child(second),
+                gpui::div()
+                    .w(px(config.min_second_size))
+                    .flex_grow((1.0 - ratio).max(0.0))
+                    .flex_shrink(1.0)
+                    .min_w(px(config.min_second_size))
+                    .min_h_0()
+                    .child(second),
             ),
             (Direction::Vertical, None) if ratio <= 0.0 => (
-                gpui::div().h(px(config.min_size)).flex_none().min_w_0().child(first),
+                gpui::div()
+                    .h(px(config.min_size))
+                    .flex_none()
+                    .min_w_0()
+                    .child(first),
                 gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
-                gpui::div().flex_grow(1.0).min_h(px(config.min_second_size)).min_w_0().child(second),
+                gpui::div()
+                    .flex_grow(1.0)
+                    .min_h(px(config.min_second_size))
+                    .min_w_0()
+                    .child(second),
             ),
             (Direction::Vertical, None) if ratio >= 1.0 => (
-                gpui::div().flex_grow(1.0).min_h(px(config.min_size)).min_w_0().child(first),
+                gpui::div()
+                    .flex_grow(1.0)
+                    .min_h(px(config.min_size))
+                    .min_w_0()
+                    .child(first),
                 gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
-                gpui::div().h(px(config.min_second_size)).flex_none().min_w_0().child(second),
+                gpui::div()
+                    .h(px(config.min_second_size))
+                    .flex_none()
+                    .min_w_0()
+                    .child(second),
             ),
             (Direction::Vertical, None) => (
-                gpui::div().h(px(config.min_size)).flex_grow(ratio).flex_shrink(1.0).min_h(px(config.min_size)).min_w_0().child(first),
+                gpui::div()
+                    .h(px(config.min_size))
+                    .flex_grow(ratio)
+                    .flex_shrink(1.0)
+                    .min_h(px(config.min_size))
+                    .min_w_0()
+                    .child(first),
                 gpui::div().h(px(config.divider_size)).flex_none().min_w_0(),
-                gpui::div().h(px(config.min_second_size)).flex_grow((1.0 - ratio).max(0.0)).flex_shrink(1.0).min_h(px(config.min_second_size)).min_w_0().child(second),
+                gpui::div()
+                    .h(px(config.min_second_size))
+                    .flex_grow((1.0 - ratio).max(0.0))
+                    .flex_shrink(1.0)
+                    .min_h(px(config.min_second_size))
+                    .min_w_0()
+                    .child(second),
             ),
         };
         let overlay = SplitHandleElement {
@@ -251,7 +353,9 @@ impl CustomElement for SplitViewElement {
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
-            "direction" => self.direction = value.as_str().map(Direction::from_prop).unwrap_or_default(),
+            "direction" => {
+                self.direction = value.as_str().map(Direction::from_prop).unwrap_or_default()
+            }
             "ratio" => {
                 if let Some(ratio) = value.as_f64().filter(|ratio| ratio.is_finite()) {
                     self.state.borrow_mut().ratio = (ratio as f32).clamp(0.0, 1.0);
@@ -272,7 +376,14 @@ impl CustomElement for SplitViewElement {
     }
 
     fn supported_props(&self) -> &'static [&'static str] {
-        &["direction", "ratio", "defaultRatio", "minSize", "minSecondSize", "dividerSize"]
+        &[
+            "direction",
+            "ratio",
+            "defaultRatio",
+            "minSize",
+            "minSecondSize",
+            "dividerSize",
+        ]
     }
 
     fn supported_events(&self) -> &'static [&'static str] {
@@ -323,15 +434,18 @@ impl SplitHandleElement {
             ),
         }
     }
-
 }
 
 impl Element for SplitHandleElement {
     type RequestLayoutState = ();
     type PrepaintState = SplitHandlePrepaint;
 
-    fn id(&self) -> Option<gpui::ElementId> { None }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
+    fn id(&self) -> Option<gpui::ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
 
     fn request_layout(
         &mut self,
@@ -344,8 +458,14 @@ impl Element for SplitHandleElement {
         style.size.width = relative(1.0).into();
         style.size.height = relative(1.0).into();
         let layout = window.request_measured_layout(style, |known, available, _, _| {
-            let width = known.width.unwrap_or(match available.width { AvailableSpace::Definite(width) => width, _ => px(0.0) });
-            let height = known.height.unwrap_or(match available.height { AvailableSpace::Definite(height) => height, _ => px(0.0) });
+            let width = known.width.unwrap_or(match available.width {
+                AvailableSpace::Definite(width) => width,
+                _ => px(0.0),
+            });
+            let height = known.height.unwrap_or(match available.height {
+                AvailableSpace::Definite(height) => height,
+                _ => px(0.0),
+            });
             size(width, height)
         });
         (layout, ())
@@ -410,7 +530,10 @@ impl Element for SplitHandleElement {
             let hitbox = hitbox.clone();
             let state = state.clone();
             move |event: &MouseDownEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && event.button == MouseButton::Left && hitbox.is_hovered(window) {
+                if phase == DispatchPhase::Bubble
+                    && event.button == MouseButton::Left
+                    && hitbox.is_hovered(window)
+                {
                     let mut state = state.borrow_mut();
                     state.active = true;
                     state.bounds = Some(bounds);
@@ -424,17 +547,25 @@ impl Element for SplitHandleElement {
             let hitbox = hitbox.clone();
             let state = state.clone();
             move |event: &MouseMoveEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && state.borrow().active && hitbox.is_hovered(window) {
+                if phase == DispatchPhase::Bubble
+                    && state.borrow().active
+                    && hitbox.is_hovered(window)
+                {
                     if !bounds.contains(&event.position) {
                         state.borrow_mut().active = false;
                         window.release_pointer();
                         cx.notify(current_view);
                         return;
                     }
-                    let available = (f32::from(config.direction.extent(bounds)) - config.divider_size).max(0.0);
+                    let available =
+                        (f32::from(config.direction.extent(bounds)) - config.divider_size).max(0.0);
                     if available > 0.0 {
-                        let raw = f32::from(config.direction.coordinate(event.position) - config.direction.origin(bounds)) - config.divider_size / 2.0;
-                        state.borrow_mut().ratio = SplitGeometry::new(config, bounds, raw / available).ratio;
+                        let raw = f32::from(
+                            config.direction.coordinate(event.position)
+                                - config.direction.origin(bounds),
+                        ) - config.divider_size / 2.0;
+                        state.borrow_mut().ratio =
+                            SplitGeometry::new(config, bounds, raw / available).ratio;
                         cx.notify(current_view);
                     }
                 }
@@ -447,12 +578,18 @@ impl Element for SplitHandleElement {
             let id = self.id;
             let emits_resize = self.emits_resize;
             move |event: &MouseUpEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && event.button == MouseButton::Left && state.borrow().active && hitbox.is_hovered(window) {
+                if phase == DispatchPhase::Bubble
+                    && event.button == MouseButton::Left
+                    && state.borrow().active
+                    && hitbox.is_hovered(window)
+                {
                     let ratio = state.borrow().ratio;
                     state.borrow_mut().active = false;
                     window.release_pointer();
                     if emits_resize {
-                        crate::renderer::emit_event_full(&callback, id, "resize", |payload| payload.ratio = Some(ratio as f64));
+                        crate::renderer::emit_event_full(&callback, id, "resize", |payload| {
+                            payload.ratio = Some(ratio as f64)
+                        });
                     }
                     cx.notify(current_view);
                     cx.stop_propagation();
@@ -471,15 +608,33 @@ impl Element for SplitHandleElement {
         });
         let divider = self.divider_bounds(prepaint.bounds);
         let line = match self.config.direction {
-            Direction::Horizontal => Bounds::new(gpui::point(divider.origin.x + px((self.config.divider_size - 1.0) / 2.0), divider.origin.y), size(px(1.0), divider.size.height)),
-            Direction::Vertical => Bounds::new(gpui::point(divider.origin.x, divider.origin.y + px((self.config.divider_size - 1.0) / 2.0)), size(divider.size.width, px(1.0))),
+            Direction::Horizontal => Bounds::new(
+                gpui::point(
+                    divider.origin.x + px((self.config.divider_size - 1.0) / 2.0),
+                    divider.origin.y,
+                ),
+                size(px(1.0), divider.size.height),
+            ),
+            Direction::Vertical => Bounds::new(
+                gpui::point(
+                    divider.origin.x,
+                    divider.origin.y + px((self.config.divider_size - 1.0) / 2.0),
+                ),
+                size(divider.size.width, px(1.0)),
+            ),
         };
-        let color = if state.borrow().active || prepaint.hitbox.is_hovered(window) { gpui::rgba(0x7c86ffff) } else { gpui::rgba(0x5d6481ff) };
+        let color = if state.borrow().active || prepaint.hitbox.is_hovered(window) {
+            gpui::rgba(0x7c86ffff)
+        } else {
+            gpui::rgba(0x5d6481ff)
+        };
         window.paint_quad(gpui::fill(line, color));
     }
 }
 
 impl IntoElement for SplitHandleElement {
     type Element = Self;
-    fn into_element(self) -> Self::Element { self }
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }

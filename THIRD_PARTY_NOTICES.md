@@ -52,6 +52,7 @@ is in two-face's
 
 | Component | License | Source |
 | --- | --- | --- |
+| alacritty_terminal (Zed fork, pinned revision) | Apache-2.0 | https://github.com/zed-industries/alacritty |
 | pulldown-cmark | MIT | https://github.com/pulldown-cmark/pulldown-cmark |
 | arboard | MIT / Apache-2.0 | https://github.com/1Password/arboard |
 | GPUI | Apache-2.0 | https://github.com/zed-industries/zed |

@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::{
-    canvas, point, px, App, Bounds, InputEvent, IntoElement, Modifiers, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled, Window,
+    canvas, point, px, App, Bounds, InputEvent, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled, Window,
 };
 use web_time::Instant;
 
@@ -249,6 +249,54 @@ pub fn dispatch_mouse_move(
         .to_platform_input(),
         cx,
     );
+}
+
+fn parse_keystroke(keystroke: &str) -> Result<Keystroke, String> {
+    Keystroke::parse(keystroke).map_err(|error| format!("Invalid keystroke {keystroke:?}: {error}"))
+}
+
+/// Dispatch space-separated keys as ordinary simulated typing. This follows
+/// GPUI's production character-input path after each key event.
+pub fn dispatch_keystrokes(
+    window: &mut Window,
+    cx: &mut App,
+    keystrokes: &str,
+) -> Result<(), String> {
+    for keystroke in keystrokes.split_whitespace() {
+        window.dispatch_keystroke(parse_keystroke(keystroke)?, cx);
+    }
+    Ok(())
+}
+
+/// Dispatch one raw key-down event without synthesizing a key-up event.
+pub fn dispatch_key_down(
+    window: &mut Window,
+    cx: &mut App,
+    keystroke: &str,
+    is_held: bool,
+) -> Result<(), String> {
+    window.dispatch_event(
+        KeyDownEvent {
+            keystroke: parse_keystroke(keystroke)?,
+            is_held,
+            prefer_character_input: false,
+        }
+        .to_platform_input(),
+        cx,
+    );
+    Ok(())
+}
+
+/// Dispatch one raw key-up event. The parsed modifiers are preserved exactly.
+pub fn dispatch_key_up(window: &mut Window, cx: &mut App, keystroke: &str) -> Result<(), String> {
+    window.dispatch_event(
+        KeyUpEvent {
+            keystroke: parse_keystroke(keystroke)?,
+        }
+        .to_platform_input(),
+        cx,
+    );
+    Ok(())
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

@@ -14,11 +14,14 @@
 //!     if (!renderer.tick()) process.exit(0)
 //!     setTimeout(loop, 8)
 //!   })
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+use futures::channel::oneshot;
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 use futures::{channel::mpsc, StreamExt as _};
 use gpui::AppContext as _;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi::bindgen_prelude::*;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -34,6 +37,7 @@ use std::time::Duration;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use wasm_bindgen::JsCast as _;
 
+use crate::appshot::{self, AppshotPermission, AppshotSelection, AppshotState};
 use crate::custom_elements::{CustomElementRegistry, CustomRenderContext};
 use crate::element_tree::EventPayload;
 use crate::retained_tree::RetainedTree;
@@ -189,6 +193,40 @@ fn update_window<R>(
     })
 }
 
+/// Updates a window without leasing its typed root view.
+///
+/// Input dispatch can synchronously draw, which re-enters `GpuixView::render`.
+/// Keep that path window-only so the draw owns the sole root-view lease.
+fn update_any_window<C, R>(
+    window: gpui::AnyWindowHandle,
+    cx: &mut C,
+    update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R,
+) -> anyhow::Result<R>
+where
+    C: gpui::AppContext,
+{
+    window.update(cx, |_root_view, window, cx| update(window, cx))
+}
+
+#[cfg(target_os = "macos")]
+fn update_window_only<R>(update: impl FnOnce(&mut gpui::Window, &mut gpui::App) -> R) -> Result<R> {
+    let window: gpui::AnyWindowHandle = GPUI_WINDOW
+        .with(|window| *window.borrow())
+        .ok_or_else(|| Error::from_reason("GPUI window is not initialized"))?
+        .into();
+
+    GPUI_APP.with(|app| {
+        let app = app.borrow();
+        let app = app
+            .as_ref()
+            .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+        app.update(|cx| {
+            update_any_window(window, cx, update)
+                .map_err(|error| Error::from_reason(error.to_string()))
+        })
+    })
+}
+
 #[cfg(target_os = "macos")]
 fn invalidate_window() -> Result<()> {
     update_window(|_view, window, cx| {
@@ -221,6 +259,30 @@ enum MouseInput {
     },
 }
 
+enum KeyboardInput {
+    Keystrokes(String),
+    KeyDown { keystroke: String, is_held: bool },
+    KeyUp(String),
+}
+
+fn dispatch_keyboard_input(
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+    input: KeyboardInput,
+) -> std::result::Result<(), String> {
+    match input {
+        KeyboardInput::Keystrokes(keystrokes) => {
+            crate::automation::dispatch_keystrokes(window, cx, &keystrokes)
+        }
+        KeyboardInput::KeyDown { keystroke, is_held } => {
+            crate::automation::dispatch_key_down(window, cx, &keystroke, is_held)
+        }
+        KeyboardInput::KeyUp(keystroke) => {
+            crate::automation::dispatch_key_up(window, cx, &keystroke)
+        }
+    }
+}
+
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 enum ClockControl {
     Pause,
@@ -232,6 +294,7 @@ enum ClockControl {
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 enum UiCommand {
     Invalidate,
+    OpenUrl(String),
     SetWindowTitle(String),
     SetDebugFrameOverlay(gpui::DebugFrameOverlayMode),
     CycleDebugFrameOverlay {
@@ -273,8 +336,68 @@ enum UiCommand {
         input: MouseInput,
         response: SyncSender<std::result::Result<(), String>>,
     },
+    DispatchKeyboard {
+        input: KeyboardInput,
+        response: SyncSender<std::result::Result<(), String>>,
+    },
+    PromptForDirectory {
+        response: oneshot::Sender<Result<Option<String>>>,
+    },
+    TerminalWrite {
+        id: u64,
+        data: Vec<u8>,
+        response: SyncSender<std::result::Result<(), String>>,
+    },
+    TerminalReset {
+        id: u64,
+        response: SyncSender<std::result::Result<(), String>>,
+    },
     Blur,
 }
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub struct NativeCallbackTask<T> {
+    receiver: Option<oneshot::Receiver<Result<T>>>,
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> NativeCallbackTask<T> {
+    pub(crate) fn new(receiver: oneshot::Receiver<Result<T>>) -> Self {
+        Self {
+            receiver: Some(receiver),
+        }
+    }
+
+    pub(crate) fn completed(result: Result<T>) -> Self {
+        let (sender, receiver) = oneshot::channel();
+        sender.send(result).ok();
+        Self::new(receiver)
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> Task for NativeCallbackTask<T>
+where
+    T: Send + 'static + ToNapiValue + TypeName,
+{
+    type Output = T;
+    type JsValue = T;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let receiver = self
+            .receiver
+            .take()
+            .ok_or_else(|| Error::from_reason("The native callback already completed"))?;
+        futures::executor::block_on(receiver)
+            .map_err(|_| Error::from_reason("The native callback closed unexpectedly"))?
+    }
+
+    fn resolve(&mut self, _: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub type PromptForDirectoryTask = NativeCallbackTask<Option<String>>;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 fn refresh_ui_window(
@@ -296,6 +419,10 @@ async fn run_ui_commands(
     while let Some(command) = commands.next().await {
         let result = match command {
             UiCommand::Invalidate => refresh_ui_window(window, cx),
+            UiCommand::OpenUrl(url) => {
+                cx.update(|cx| cx.open_url(&url));
+                Ok(())
+            }
             UiCommand::SetWindowTitle(title) => window.update(cx, move |view, window, cx| {
                 view.window_title = title;
                 cx.notify();
@@ -466,6 +593,86 @@ async fn run_ui_commands(
                     .ok();
                 result
             }
+            UiCommand::DispatchKeyboard { input, response } => {
+                let result = update_any_window(window.into(), cx, move |window, cx| {
+                    dispatch_keyboard_input(window, cx, input).map_err(anyhow::Error::msg)
+                })
+                .and_then(|result| result);
+                response
+                    .send(
+                        result
+                            .as_ref()
+                            .map(|_| ())
+                            .map_err(|error| format!("{error:#}")),
+                    )
+                    .ok();
+                result
+            }
+            UiCommand::PromptForDirectory { response } => {
+                let prompt = cx.update(|cx| {
+                    cx.prompt_for_paths(gpui::PathPromptOptions {
+                        files: false,
+                        directories: true,
+                        multiple: false,
+                        prompt: None,
+                    })
+                })?;
+                cx.spawn(async move |_cx| {
+                    let result = prompt
+                        .await
+                        .map_err(|_| Error::from_reason("The directory picker closed unexpectedly"))
+                        .and_then(|result| {
+                            result.map_err(|error| Error::from_reason(error.to_string()))
+                        })
+                        .map(|paths| {
+                            paths.and_then(|paths| {
+                                paths
+                                    .into_iter()
+                                    .next()
+                                    .map(|path| path.to_string_lossy().into_owned())
+                            })
+                        });
+                    response.send(result).ok();
+                })
+                .detach();
+                Ok(())
+            }
+            UiCommand::TerminalWrite { id, data, response } => {
+                let result = window.update(cx, move |view, window, cx| {
+                    let result = view.custom_registry.command(id, "terminal", "write", &data);
+                    if result.is_ok() {
+                        cx.notify();
+                        window.refresh();
+                    }
+                    result
+                });
+                response
+                    .send(
+                        result
+                            .map_err(|error| format!("{error:#}"))
+                            .and_then(|result| result),
+                    )
+                    .ok();
+                Ok(())
+            }
+            UiCommand::TerminalReset { id, response } => {
+                let result = window.update(cx, move |view, window, cx| {
+                    let result = view.custom_registry.command(id, "terminal", "reset", &[]);
+                    if result.is_ok() {
+                        cx.notify();
+                        window.refresh();
+                    }
+                    result
+                });
+                response
+                    .send(
+                        result
+                            .map_err(|error| format!("{error:#}"))
+                            .and_then(|result| result),
+                    )
+                    .ok();
+                Ok(())
+            }
             UiCommand::Blur => window.update(cx, |_view, window, _cx| window.blur()),
         };
         if let Err(error) = result {
@@ -494,6 +701,9 @@ pub struct GpuixRenderer {
     /// Shared with GpuixView so napi methods can read the live selection
     /// without an App context. Paint and napi calls can use different threads.
     selection: SharedSelection,
+    /// Opaque, renderer-lifetime appshot and shortcut state. It never enters
+    /// the retained React tree or any durable renderer data.
+    appshot: Arc<Mutex<AppshotState>>,
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
     ui_commands: Mutex<Option<mpsc::UnboundedSender<UiCommand>>>,
 }
@@ -524,6 +734,16 @@ impl GpuixRenderer {
     fn dispatch_mouse_input(&self, input: MouseInput) -> Result<()> {
         let (response_sender, response_receiver) = sync_channel(1);
         self.send_ui_command(UiCommand::DispatchMouse {
+            input,
+            response: response_sender,
+        })?;
+        recv_ui_response(response_receiver, "the GPUI UI command")?.map_err(Error::from_reason)
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+    fn dispatch_keyboard_input(&self, input: KeyboardInput) -> Result<()> {
+        let (response_sender, response_receiver) = sync_channel(1);
+        self.send_ui_command(UiCommand::DispatchKeyboard {
             input,
             response: response_sender,
         })?;
@@ -606,9 +826,140 @@ impl GpuixRenderer {
             tree: Arc::new(Mutex::new(RetainedTree::new())),
             initialized: Arc::new(Mutex::new(false)),
             selection: SharedSelection::default(),
+            appshot: Arc::new(Mutex::new(AppshotState::default())),
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
             ui_commands: Mutex::new(None),
         }
+    }
+
+    /// Read the native screen-capture TCC state without exposing platform
+    /// details. macOS grants may require a restart before capture is usable.
+    #[napi]
+    pub fn preflight_appshot_permission(&self) -> Result<AppshotPermission> {
+        #[cfg(target_os = "macos")]
+        return Ok(appshot::macos::preflight_permission());
+
+        #[cfg(not(target_os = "macos"))]
+        Err(appshot::unavailable())
+    }
+
+    /// Ask macOS for screen-capture access. The response is deliberately
+    /// limited to the authorization state and restart requirement.
+    #[napi]
+    pub fn request_appshot_permission(&self) -> Result<AppshotPermission> {
+        #[cfg(target_os = "macos")]
+        return Ok(appshot::macos::request_permission());
+
+        #[cfg(not(target_os = "macos"))]
+        Err(appshot::unavailable())
+    }
+
+    /// Open the native window-only sharing picker. The selected filter stays
+    /// in native renderer state and JavaScript receives only a one-shot token.
+    #[napi(ts_return_type = "Promise<AppshotSelection>")]
+    pub fn select_appshot_window(&self) -> Result<AsyncTask<NativeCallbackTask<AppshotSelection>>> {
+        let (sender, receiver) = oneshot::channel();
+        if !*self.initialized.lock().unwrap() {
+            sender.send(Err(appshot::unavailable())).ok();
+            return Ok(AsyncTask::new(NativeCallbackTask::new(receiver)));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            appshot::macos::select_window(self.appshot.clone(), sender);
+            return Ok(AsyncTask::new(NativeCallbackTask::new(receiver)));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            sender.send(Err(appshot::unavailable())).ok();
+            Ok(AsyncTask::new(NativeCallbackTask::new(receiver)))
+        }
+    }
+
+    /// Capture the window selected by `select_appshot_window`. A handle is
+    /// consumed before capture so it cannot be replayed.
+    #[napi(ts_return_type = "Promise<Buffer>")]
+    pub fn capture_appshot_window(
+        &self,
+        handle: String,
+    ) -> Result<AsyncTask<NativeCallbackTask<Buffer>>> {
+        let (sender, receiver) = oneshot::channel();
+        #[cfg(target_os = "macos")]
+        {
+            appshot::macos::capture_selected(&self.appshot, &handle, sender);
+            return Ok(AsyncTask::new(NativeCallbackTask::new(receiver)));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = self.appshot.lock().unwrap().consume_handle(&handle);
+            sender.send(Err(appshot::unavailable())).ok();
+            Ok(AsyncTask::new(NativeCallbackTask::new(receiver)))
+        }
+    }
+
+    /// Capture the native frontmost target without crossing any source
+    /// identity through the JavaScript ABI.
+    #[napi(ts_return_type = "Promise<Buffer>")]
+    pub fn capture_frontmost_appshot(&self) -> Result<AsyncTask<NativeCallbackTask<Buffer>>> {
+        let (sender, receiver) = oneshot::channel();
+        #[cfg(target_os = "macos")]
+        {
+            appshot::macos::capture_frontmost(sender);
+            return Ok(AsyncTask::new(NativeCallbackTask::new(receiver)));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            sender.send(Err(appshot::unavailable())).ok();
+            Ok(AsyncTask::new(NativeCallbackTask::new(receiver)))
+        }
+    }
+
+    /// Explicitly discard a selected source handle. Disposal is idempotent so
+    /// callers can clean up cancelled UI flows safely.
+    #[napi]
+    pub fn dispose_appshot_window(&self, handle: String) {
+        self.appshot.lock().unwrap().dispose_handle(&handle);
+    }
+
+    /// Register a renderer-lifetime opaque global-shortcut token. Platform
+    /// installation is intentionally owned by the native renderer, never by
+    /// React state or the retained tree.
+    #[napi]
+    pub fn register_global_shortcut(&self, shortcut: String) -> Result<String> {
+        #[cfg(target_os = "macos")]
+        {
+            let callback = self
+                .event_callback
+                .lock()
+                .unwrap()
+                .clone()
+                .map(|tsf| {
+                    Arc::new(move |token| {
+                        tsf.call(
+                            Ok(EventPayload {
+                                element_id: 0.0,
+                                event_type: "globalShortcut".into(),
+                                value: Some(token),
+                                ..Default::default()
+                            }),
+                            ThreadsafeFunctionCallMode::NonBlocking,
+                        );
+                    }) as Arc<dyn Fn(String) + Send + Sync>
+                })
+                .ok_or_else(appshot::unavailable)?;
+            return appshot::macos::register_shortcut(
+                &mut self.appshot.lock().unwrap(),
+                shortcut,
+                callback,
+            );
+        }
+        #[cfg(not(target_os = "macos"))]
+        self.appshot.lock().unwrap().register_shortcut(shortcut)
+    }
+
+    /// Remove one renderer-local shortcut registration.
+    #[napi]
+    pub fn unregister_global_shortcut(&self, token: String) -> Result<()> {
+        self.appshot.lock().unwrap().unregister_shortcut(&token)
     }
 
     /// Initialize GPUI using the native event-loop architecture for this OS.
@@ -632,6 +983,106 @@ impl GpuixRenderer {
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         return self.init_threaded(options);
+    }
+
+    /// Open the platform-native single-directory picker. Cancellation returns null.
+    #[napi(ts_return_type = "Promise<string | null>")]
+    pub fn prompt_for_directory(&self) -> Result<AsyncTask<PromptForDirectoryTask>> {
+        if !*self.initialized.lock().unwrap() {
+            return Err(Error::from_reason(
+                "Renderer not initialized. Call init() first.",
+            ));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let (response, receiver) = oneshot::channel();
+            GPUI_APP.with(|app| -> Result<()> {
+                let app = app.borrow();
+                let app = app
+                    .as_ref()
+                    .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+                app.update(move |cx| {
+                    let prompt = cx.prompt_for_paths(gpui::PathPromptOptions {
+                        files: false,
+                        directories: true,
+                        multiple: false,
+                        prompt: None,
+                    });
+                    cx.spawn(async move |_cx| {
+                        let result = prompt
+                            .await
+                            .map_err(|_| {
+                                Error::from_reason("The directory picker closed unexpectedly")
+                            })
+                            .and_then(|result| {
+                                result.map_err(|error| Error::from_reason(error.to_string()))
+                            })
+                            .map(|paths| {
+                                paths.and_then(|paths| {
+                                    paths
+                                        .into_iter()
+                                        .next()
+                                        .map(|path| path.to_string_lossy().into_owned())
+                                })
+                            });
+                        response.send(result).ok();
+                    })
+                    .detach();
+                });
+                Ok(())
+            })?;
+            return Ok(AsyncTask::new(PromptForDirectoryTask::new(receiver)));
+        }
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = oneshot::channel();
+            self.send_ui_command(UiCommand::PromptForDirectory { response })?;
+            return Ok(AsyncTask::new(PromptForDirectoryTask::new(receiver)));
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// Open a URL through GPUI's platform owner.
+    #[napi]
+    pub fn open_url(&self, url: String) -> Result<()> {
+        if !*self.initialized.lock().unwrap() {
+            return Err(Error::from_reason(
+                "Renderer not initialized. Call init() first.",
+            ));
+        }
+
+        #[cfg(target_os = "macos")]
+        return GPUI_APP.with(|app| {
+            let app = app.borrow();
+            let app = app
+                .as_ref()
+                .ok_or_else(|| Error::from_reason("GPUI application is not initialized"))?;
+            app.update(move |cx| cx.open_url(&url));
+            Ok(())
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.send_ui_command(UiCommand::OpenUrl(url));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = url;
+            Err(Error::from_reason("Unsupported operating system"))
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -729,7 +1180,6 @@ impl GpuixRenderer {
         });
 
         *self.initialized.lock().unwrap() = true;
-        self.event_callback.lock().unwrap().take();
         Ok(())
     }
 
@@ -810,7 +1260,6 @@ impl GpuixRenderer {
 
         *self.ui_commands.lock().unwrap() = Some(command_sender);
         *self.initialized.lock().unwrap() = true;
-        self.event_callback.lock().unwrap().take();
         Ok(())
     }
 
@@ -1189,6 +1638,103 @@ impl GpuixRenderer {
         Err(Error::from_reason("Unsupported operating system"))
     }
 
+    /// Feed terminal output directly to the retained native emulator.
+    #[napi]
+    pub fn terminal_write(&self, element_id: f64, data_base64: String) -> Result<()> {
+        use base64::Engine as _;
+
+        let id = to_element_id(element_id)?;
+        {
+            let tree = self.tree.lock().unwrap();
+            let element = tree
+                .elements
+                .get(&id)
+                .ok_or_else(|| Error::from_reason(format!("element {id} does not exist")))?;
+            if element.element_type != "terminal" {
+                return Err(Error::from_reason(format!(
+                    "element {id} is {}, not terminal",
+                    element.element_type
+                )));
+            }
+        }
+        let data = base64::engine::general_purpose::STANDARD
+            .decode(data_base64)
+            .map_err(|error| Error::from_reason(format!("invalid terminal data: {error}")))?;
+
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, window, cx| {
+            let result = view.custom_registry.command(id, "terminal", "write", &data);
+            if result.is_ok() {
+                cx.notify();
+                window.refresh();
+            }
+            result
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::TerminalWrite { id, data, response })?;
+            return recv_ui_response(receiver, "the terminal write command")?
+                .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
+    /// Reset the retained native terminal emulator without changing its measured viewport.
+    #[napi]
+    pub fn terminal_reset(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        {
+            let tree = self.tree.lock().unwrap();
+            let element = tree
+                .elements
+                .get(&id)
+                .ok_or_else(|| Error::from_reason(format!("element {id} does not exist")))?;
+            if element.element_type != "terminal" {
+                return Err(Error::from_reason(format!(
+                    "element {id} is {}, not terminal",
+                    element.element_type
+                )));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        return update_window(move |view, window, cx| {
+            let result = view.custom_registry.command(id, "terminal", "reset", &[]);
+            if result.is_ok() {
+                cx.notify();
+                window.refresh();
+            }
+            result
+        })?
+        .map_err(Error::from_reason);
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        {
+            let (response, receiver) = sync_channel(1);
+            self.send_ui_command(UiCommand::TerminalReset { id, response })?;
+            return recv_ui_response(receiver, "the terminal reset command")?
+                .map_err(Error::from_reason);
+        }
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        Err(Error::from_reason("Unsupported operating system"))
+    }
+
     #[napi]
     pub fn blur(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
@@ -1489,6 +2035,85 @@ impl GpuixRenderer {
         }
     }
 
+    /// Simulate space-separated keys through GPUI's production input path.
+    #[napi]
+    pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window_only(move |window, cx| {
+            dispatch_keyboard_input(window, cx, KeyboardInput::Keystrokes(keystrokes))
+                .map_err(Error::from_reason)
+        })?;
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.dispatch_keyboard_input(KeyboardInput::Keystrokes(keystrokes));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = keystrokes;
+            Err(Error::from_reason(
+                "The production GPUIX renderer does not support this operating system",
+            ))
+        }
+    }
+
+    /// Simulate one key-down event while preserving its parsed modifiers.
+    #[napi]
+    pub fn simulate_key_down(&self, keystroke: String, is_held: Option<bool>) -> Result<()> {
+        let is_held = is_held.unwrap_or(false);
+        #[cfg(target_os = "macos")]
+        return update_window_only(move |window, cx| {
+            dispatch_keyboard_input(window, cx, KeyboardInput::KeyDown { keystroke, is_held })
+                .map_err(Error::from_reason)
+        })?;
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.dispatch_keyboard_input(KeyboardInput::KeyDown { keystroke, is_held });
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = (keystroke, is_held);
+            Err(Error::from_reason(
+                "The production GPUIX renderer does not support this operating system",
+            ))
+        }
+    }
+
+    /// Simulate one key-up event while preserving its parsed modifiers.
+    #[napi]
+    pub fn simulate_key_up(&self, keystroke: String) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window_only(move |window, cx| {
+            dispatch_keyboard_input(window, cx, KeyboardInput::KeyUp(keystroke))
+                .map_err(Error::from_reason)
+        })?;
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.dispatch_keyboard_input(KeyboardInput::KeyUp(keystroke));
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = keystroke;
+            Err(Error::from_reason(
+                "The production GPUIX renderer does not support this operating system",
+            ))
+        }
+    }
+
     #[napi]
     pub fn clock_pause(&self) -> Result<f64> {
         #[cfg(target_os = "macos")]
@@ -1759,6 +2384,18 @@ impl WebGpuixRenderer {
             self.selection.clone(),
             self.event_callback.clone(),
         )
+    }
+
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = openUrl)]
+    pub fn open_url(&self, url: String) -> Result<(), wasm_bindgen::JsValue> {
+        WEB_APP.with(|app| {
+            let app = app.borrow();
+            let app = app.as_ref().ok_or_else(|| {
+                wasm_bindgen::JsValue::from_str("GPUI application is not initialized")
+            })?;
+            app.update(move |cx| cx.open_url(&url));
+            Ok(())
+        })
     }
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = createElement)]
@@ -2198,9 +2835,10 @@ impl WebGpuixRenderer {
     }
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
 impl Drop for GpuixRenderer {
     fn drop(&mut self) {
+        self.appshot.lock().unwrap().dispose_all();
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
         self.ui_commands.lock().unwrap().take();
     }
 }
@@ -2747,8 +3385,11 @@ impl GpuixView {
                 .and_then(|index| isize::try_from(index).ok())
         };
         let needs_focus = |element: &crate::retained_tree::RetainedElement| {
-            matches!(element.element_type.as_str(), "input" | "textarea")
-                || tab_index(element).is_some()
+            matches!(
+                element.element_type.as_str(),
+                "input" | "textarea" | "terminal"
+            ) || tab_index(element).is_some()
+                || element.events.contains("terminalInput")
                 || element.events.contains("keyDown")
                 || element.events.contains("keyUp")
                 || element.events.contains("focus")
@@ -2757,7 +3398,11 @@ impl GpuixView {
         // Create handles for elements that need focus but don't have one yet.
         for (&id, element) in &tree.elements {
             let tab_index = tab_index(element).or_else(|| {
-                matches!(element.element_type.as_str(), "input" | "textarea").then_some(0)
+                matches!(
+                    element.element_type.as_str(),
+                    "input" | "textarea" | "terminal"
+                )
+                .then_some(0)
             });
 
             if needs_focus(element) && !self.focus_handles.contains_key(&id) {
@@ -2929,29 +3574,36 @@ pub(crate) fn build_element(
         return gpui::Empty.into_any_element();
     };
 
-    let animated_style = if let Some(source) = element.custom_props.get("motion") {
-        let state = match ctx.motion_states.entry(id) {
-            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                match crate::motion::MotionState::new(source, ctx.now) {
-                    Ok(state) => entry.insert(state),
-                    Err(error) => {
-                        log::warn!("Invalid motion description for element {id}: {error}");
-                        entry.insert(crate::motion::MotionState::invalid(source, ctx.now))
+    // Canvas owns its compact "running" / "paused" motion prop. It is not a
+    // generic style transition description and must not enter MotionState.
+    let animated_style = if element.element_type != "canvas" {
+        if let Some(source) = element.custom_props.get("motion") {
+            let state = match ctx.motion_states.entry(id) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    match crate::motion::MotionState::new(source, ctx.now) {
+                        Ok(state) => entry.insert(state),
+                        Err(error) => {
+                            log::warn!("Invalid motion description for element {id}: {error}");
+                            entry.insert(crate::motion::MotionState::invalid(source, ctx.now))
+                        }
                     }
                 }
+            };
+            if let Err(error) = state.sync(source, ctx.now) {
+                log::warn!("Invalid motion update for element {id}: {error}");
             }
-        };
-        if let Err(error) = state.sync(source, ctx.now) {
-            log::warn!("Invalid motion update for element {id}: {error}");
+            state.is_valid().then(|| {
+                let frame = state.frame(ctx.now);
+                *ctx.motion_active |= frame.active;
+                let mut resolved = element.style.clone().unwrap_or_default();
+                frame.style.apply_to(&mut resolved);
+                resolved
+            })
+        } else {
+            ctx.motion_states.remove(&id);
+            None
         }
-        state.is_valid().then(|| {
-            let frame = state.frame(ctx.now);
-            *ctx.motion_active |= frame.active;
-            let mut resolved = element.style.clone().unwrap_or_default();
-            frame.style.apply_to(&mut resolved);
-            resolved
-        })
     } else {
         ctx.motion_states.remove(&id);
         None
@@ -2976,6 +3628,25 @@ pub(crate) fn build_element(
             ctx.custom_registry.destroy_with_window(id, window);
             build_virtual_list(element, ctx, window, cx)
         }
+        // Canvas is a noninteractive leaf. Build it before traversing retained
+        // children so an accidental child cannot allocate, paint, or gain input.
+        "canvas" => {
+            let inherited = ctx.inherited;
+            let render_ctx = CustomRenderContext {
+                id,
+                events: &element.events,
+                event_callback: ctx.event_callback,
+                focus_handle: None,
+                style,
+                children: Vec::new(),
+                selection: ctx.selection.clone(),
+                selectable: inherited.selectable,
+                selection_wash: inherited.selection_wash,
+                now: ctx.now,
+            };
+            ctx.custom_registry
+                .render("canvas", &element.custom_props, render_ctx, window, cx)
+        }
 
         // Polymorphic dispatch for all custom elements.
         custom_type => {
@@ -2997,6 +3668,7 @@ pub(crate) fn build_element(
                 selection: ctx.selection.clone(),
                 selectable: inherited.selectable,
                 selection_wash: inherited.selection_wash,
+                now: ctx.now,
             };
             ctx.custom_registry
                 .render(custom_type, &element.custom_props, render_ctx, window, cx)

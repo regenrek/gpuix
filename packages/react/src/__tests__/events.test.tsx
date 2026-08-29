@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach } from "vitest"
 import React, { useState, useRef } from "react"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { startFrameLoop } from "../reconciler/renderer.js"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import { expectScreenshotsDiffer } from "./test-utils"
 
 // All tests require the native GPUI test renderer (cargo build with test-support).

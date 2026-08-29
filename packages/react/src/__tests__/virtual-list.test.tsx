@@ -2,6 +2,7 @@
 
 import React from "react"
 import { describe, expect, it } from "vitest"
+import { VirtualList } from "../components/index.js"
 import { createTestRoot } from "../testing.js"
 
 function Rows({ count }: { count: number }) {
@@ -197,6 +198,27 @@ describe("<virtual-list>", () => {
     render(transcript(21))
     expect(renderer.getPaintedText()).toContain("row-20")
     expect(renderer.getPaintedText()).not.toContain("row-0")
+  })
+
+  it("mounts appended rows in the windowed wrapper while tail following is active", () => {
+    const { render, renderer } = createTestRoot()
+    const transcript = (count: number) => (
+      <VirtualList
+        itemCount={count}
+        renderItem={(index) => <div key={index}><text>{`row-${index}`}</text></div>}
+        alignment="bottom"
+        followTail
+        overdraw={0}
+        estimatedItemHeight={40}
+        style={{ width: 400, height: 160 }}
+      />
+    )
+
+    render(transcript(1))
+    expect(renderer.getAllText()).toContain("row-0")
+
+    render(transcript(2))
+    expect(renderer.getAllText()).toContain("row-1")
   })
 
   it("keeps only the mounted window in the retained tree", () => {

@@ -14,7 +14,7 @@
 import fs from "fs"
 import { describe, it, expect, beforeEach } from "vitest"
 import React from "react"
-import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "@gpuix/react/testing"
+import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "@regenrek/gpuix-react/testing"
 import type { StructuredPatchHunk as Hunk } from "diff"
 import { DiffViewer } from "./diff"
 

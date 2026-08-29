@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 mod automation;
+mod appshot;
 mod color;
 mod custom_elements;
 mod diff;
@@ -18,5 +19,6 @@ mod theme;
 mod test_renderer;
 
 pub use element_tree::*;
+pub use appshot::*;
 pub use renderer::*;
 pub use style::*;

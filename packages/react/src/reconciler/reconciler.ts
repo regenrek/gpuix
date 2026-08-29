@@ -4,10 +4,11 @@ import ReactReconciler from "react-reconciler"
 import type { OpaqueRoot } from "react-reconciler"
 import { ConcurrentRoot } from "react-reconciler/constants.js"
 import { GpuixContext } from "../hooks/use-gpuix.js"
-import type { Container, ElementIdAllocator, NativeRenderer } from "../types/host.js"
+import type { Container, NativeRenderer } from "../types/host.js"
 import { wrapWithBatching } from "./batch-renderer.js"
 import { attachRoot, detachRoot } from "./event-registry.js"
 import { hostConfig } from "./host-config.js"
+import { idAllocatorForRenderer } from "./runtime-state.js"
 
 // Cast to any because @types/react-reconciler is out of date with react-reconciler 0.31.0
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,23 +32,12 @@ export interface Root {
   unmount: () => void
 }
 
-const idAllocators = new WeakMap<NativeRenderer, ElementIdAllocator>()
-
-function idAllocatorFor(renderer: NativeRenderer): ElementIdAllocator {
-  let alloc = idAllocators.get(renderer)
-  if (!alloc) {
-    alloc = { nextElementId: 0 }
-    idAllocators.set(renderer, alloc)
-  }
-  return alloc
-}
-
 export function createRoot(renderer: NativeRenderer): Root {
   let container: OpaqueRoot | null = null
   const batchedRenderer = wrapWithBatching(renderer)
   const gpuixContainer: Container = {
     renderer: batchedRenderer,
-    ids: idAllocatorFor(renderer),
+    ids: idAllocatorForRenderer(renderer),
     eventHandlers: new Map(),
   }
   attachRoot(renderer, gpuixContainer)

@@ -5,14 +5,14 @@
   "scripts": {
     "counter": "bun --hot counter.tsx",
     "diff": "bun --hot diff.tsx",
-    "test": "vitest run --exclude '**/*.perf.test.tsx'",
+    "test": "vitest run --exclude '**/*.perf.test.tsx' --exclude chat.test.tsx && vitest run chat.test.tsx",
     "test:perf": "vitest run chat.perf.test.tsx",
     "native-text": "bun --hot native-text.tsx",
     "chat": "bun --hot chat.tsx",
     "compile": "bun compile-chat.ts"
   },
   "dependencies": {
-    "@gpuix/react": "workspace:*",
+    "@regenrek/gpuix-react": "workspace:*",
     "@kmamal/sdl": "^0.11.12",
     "diff": "^7.0.0",
     "react": "^19.2.4",

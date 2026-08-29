@@ -1,6 +1,6 @@
 {
-  "name": "@gpuix/react",
-  "version": "0.4.0",
+  "name": "@regenrek/gpuix-react",
+  "version": "0.5.0-regenrek.0",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
@@ -57,21 +57,21 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/remorses/gpuix"
+    "url": "https://github.com/regenrek/gpuix"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
   "scripts": {
-    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @gpuix/react locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
+    "prepublishOnly": "node -e \"if (!process.env.CI) { console.error('Never publish @regenrek/gpuix-react locally. CI is the only release path. See AGENTS.md.'); process.exit(1) }\"",
     "build": "rm -rf dist && tsc",
     "dev": "tsc --watch",
-    "test": "vitest run",
+    "test": "vitest run --exclude src/__tests__/render.test.tsx && vitest run src/__tests__/render.test.tsx",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gpuix/native": "workspace:^",
+    "@regenrek/gpuix-native": "workspace:^",
     "eventsource-parser": "^4.1.0",
     "react-reconciler": "^0.31.0",
     "zod": "^4.4.3"

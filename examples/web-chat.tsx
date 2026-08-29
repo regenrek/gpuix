@@ -1,7 +1,7 @@
 /** Browser entry for the full GPUIX chat example. */
 
 import React from 'react'
-import { render } from '@gpuix/react'
+import { render } from '@regenrek/gpuix-react'
 import { ChatApp } from './chat'
 
 render(

@@ -3,6 +3,10 @@
 /// This provides a native `<img>` for GPUIX React apps while keeping the same
 /// custom-element prop pipeline (`setCustomProp`/`custom_props`).
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use std::sync::Arc;
+
+const MAX_INLINE_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 
 pub struct ImgFactory;
 
@@ -68,7 +72,31 @@ impl ImgObjectFit {
 #[derive(Debug, Clone, Default)]
 pub struct ImgElement {
     src: String,
+    inline_image: Option<Arc<gpui::Image>>,
+    inline_error: bool,
     object_fit: ImgObjectFit,
+}
+
+impl ImgElement {
+    fn load_src(&mut self, src: String) {
+        let inline = decode_inline_image(&src);
+        self.inline_error = src.starts_with("data:") && inline.is_none();
+        self.inline_image =
+            inline.map(|(format, bytes)| Arc::new(gpui::Image::from_bytes(format, bytes)));
+        self.src = src;
+    }
+}
+
+fn decode_inline_image(src: &str) -> Option<(gpui::ImageFormat, Vec<u8>)> {
+    let payload = src.strip_prefix("data:")?;
+    let (meta, encoded) = payload.split_once(',')?;
+    let mime_type = meta.strip_suffix(";base64")?;
+    let format = gpui::ImageFormat::from_mime_type(mime_type)?;
+    let bytes = BASE64.decode(encoded).ok()?;
+    if bytes.is_empty() || bytes.len() > MAX_INLINE_IMAGE_BYTES {
+        return None;
+    }
+    Some((format, bytes))
 }
 
 impl CustomElement for ImgElement {
@@ -98,8 +126,26 @@ impl CustomElement for ImgElement {
             return fallback.into_any_element();
         }
 
-        let src_path = std::path::PathBuf::from(self.src.clone());
-        let mut el = gpui::img(src_path)
+        let source: gpui::ImageSource = if let Some(image) = &self.inline_image {
+            image.clone().into()
+        } else if self.inline_error {
+            let mut fallback = gpui::div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(gpui::rgba(0x1f2230ff))
+                .border(gpui::px(1.0))
+                .border_color(gpui::rgba(0x5d6481ff))
+                .text_color(gpui::rgba(0xa4accdff))
+                .child("img: invalid inline source");
+            if let Some(style) = ctx.style {
+                fallback = crate::renderer::apply_styles(fallback, style);
+            }
+            return fallback.into_any_element();
+        } else {
+            std::path::PathBuf::from(self.src.clone()).into()
+        };
+        let mut el = gpui::img(source)
             .object_fit(self.object_fit.as_gpui())
             .with_fallback(|| {
                 gpui::div()
@@ -123,7 +169,7 @@ impl CustomElement for ImgElement {
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
-            "src" => self.src = value.as_str().unwrap_or("").to_string(),
+            "src" => self.load_src(value.as_str().unwrap_or("").to_string()),
             "objectFit" => {
                 self.object_fit = value
                     .as_str()
@@ -143,6 +189,22 @@ impl CustomElement for ImgElement {
     }
 
     fn destroy(&mut self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_image_requires_supported_bounded_base64_data_uri() {
+        let (format, bytes) = decode_inline_image("data:image/png;base64,iVBORw0KGgo=")
+            .expect("valid PNG data URI should decode");
+        assert_eq!(format, gpui::ImageFormat::Png);
+        assert_eq!(bytes, b"\x89PNG\r\n\x1a\n");
+        assert!(decode_inline_image("data:text/plain;base64,aGk=").is_none());
+        assert!(decode_inline_image("data:image/png,not-base64").is_none());
+        assert!(decode_inline_image("data:image/png;base64,").is_none());
+    }
 }
 
 #[derive(Debug, Clone, Default)]

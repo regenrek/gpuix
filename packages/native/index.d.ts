@@ -3,8 +3,50 @@
 /** The main GPUI renderer exposed to Node.js. */
 export declare class GpuixRenderer {
   constructor(eventCallback?: (((err: Error | null, arg: EventPayload) => any)) | undefined | null)
+  /**
+   * Read the native screen-capture TCC state without exposing platform
+   * details. macOS grants may require a restart before capture is usable.
+   */
+  preflightAppshotPermission(): AppshotPermission
+  /**
+   * Ask macOS for screen-capture access. The response is deliberately
+   * limited to the authorization state and restart requirement.
+   */
+  requestAppshotPermission(): AppshotPermission
+  /**
+   * Open the native window-only sharing picker. The selected filter stays
+   * in native renderer state and JavaScript receives only a one-shot token.
+   */
+  selectAppshotWindow(): Promise<AppshotSelection>
+  /**
+   * Capture the window selected by `select_appshot_window`. A handle is
+   * consumed before capture so it cannot be replayed.
+   */
+  captureAppshotWindow(handle: string): Promise<Buffer>
+  /**
+   * Capture the native frontmost target without crossing any source
+   * identity through the JavaScript ABI.
+   */
+  captureFrontmostAppshot(): Promise<Buffer>
+  /**
+   * Explicitly discard a selected source handle. Disposal is idempotent so
+   * callers can clean up cancelled UI flows safely.
+   */
+  disposeAppshotWindow(handle: string): void
+  /**
+   * Register a renderer-lifetime opaque global-shortcut token. Platform
+   * installation is intentionally owned by the native renderer, never by
+   * React state or the retained tree.
+   */
+  registerGlobalShortcut(shortcut: string): string
+  /** Remove one renderer-local shortcut registration. */
+  unregisterGlobalShortcut(token: string): void
   /** Initialize GPUI using the native event-loop architecture for this OS. */
   init(options?: WindowOptions | undefined | null): void
+  /** Open the platform-native single-directory picker. Cancellation returns null. */
+  promptForDirectory(): Promise<string | null>
+  /** Open a URL through GPUI's platform owner. */
+  openUrl(url: string): void
   createElement(id: number, elementType: string): void
   /**
    * Destroy an element and all descendants. Returns array of destroyed IDs
@@ -68,6 +110,10 @@ export declare class GpuixRenderer {
   getDebugFrameOverlayStats(): DebugFrameOverlayStats
   setWindowTitle(title: string): void
   focusElement(elementId: number): void
+  /** Feed terminal output directly to the retained native emulator. */
+  terminalWrite(elementId: number, dataBase64: string): void
+  /** Reset the retained native terminal emulator without changing its measured viewport. */
+  terminalReset(elementId: number): void
   blur(): void
   /** The current text selection joined in document order, or null. */
   getSelectedText(): string | null
@@ -93,6 +139,12 @@ export declare class GpuixRenderer {
   simulateMouseDown(x: number, y: number, button?: number | undefined | null): void
   simulateMouseUp(x: number, y: number, button?: number | undefined | null): void
   simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null): void
+  /** Simulate space-separated keys through GPUI's production input path. */
+  simulateKeystrokes(keystrokes: string): void
+  /** Simulate one key-down event while preserving its parsed modifiers. */
+  simulateKeyDown(keystroke: string, isHeld?: boolean | undefined | null): void
+  /** Simulate one key-up event while preserving its parsed modifiers. */
+  simulateKeyUp(keystroke: string): void
   clockPause(): number
   clockSet(nowMs: number): number
   clockFastForward(deltaMs: number): number
@@ -117,6 +169,28 @@ export declare class GpuixRenderer {
  */
 export declare class TestGpuixRenderer {
   constructor()
+  /**
+   * Deterministic appshot permission state. This double never opens a
+   * system picker or captures a real window.
+   */
+  preflightAppshotPermission(): AppshotPermission
+  requestAppshotPermission(): AppshotPermission
+  setAppshotPermission(granted: boolean): void
+  setAppshotSelection(selected: boolean): void
+  selectAppshotWindow(): Promise<AppshotSelection>
+  captureAppshotWindow(handle: string): Promise<Buffer>
+  captureFrontmostAppshot(): Promise<Buffer>
+  disposeAppshotWindow(handle: string): void
+  registerGlobalShortcut(shortcut: string): string
+  unregisterGlobalShortcut(token: string): void
+  /**
+   * Test-only native event injection. This keeps global-shortcut dispatch
+   * under the same native event owner as production Carbon delivery rather
+   * than inventing a JavaScript callback registry.
+   */
+  triggerGlobalShortcut(token: string): void
+  /** Test hosts model cancellation without opening a platform dialog. */
+  promptForDirectory(): Promise<string | null>
   createElement(id: number, elementType: string): void
   /**
    * Destroy an element and all descendants. Returns destroyed IDs
@@ -135,6 +209,10 @@ export declare class TestGpuixRenderer {
   setCustomProp(id: number, key: string, valueJson: string): void
   /** Get a custom prop value from an element. */
   getCustomProp(id: number, key: string): string | null
+  /** Feed terminal output directly to the retained native emulator. */
+  terminalWrite(elementId: number, dataBase64: string): void
+  /** Reset the retained native terminal emulator without changing its measured viewport. */
+  terminalReset(elementId: number): void
   /**
    * Signal that a batch of mutations is complete.
    * In tests, this is a no-op — flush() handles the actual re-render.
@@ -166,6 +244,11 @@ export declare class TestGpuixRenderer {
    * The focused element receives keyDown/keyUp events.
    */
   simulateKeystrokes(keystrokes: string): void
+  /**
+   * Commit text through the focused element's platform input handler.
+   * This is the production IME insertion path, not a synthesized key event.
+   */
+  simulateInput(input: string): void
   /**
    * Simulate a single key down event through GPUI's input pipeline.
    * Format: modifier-key string, e.g. "a", "enter", "cmd-s".
@@ -294,6 +377,43 @@ export declare class TestGpuixRenderer {
   getRootId(): number | null
 }
 
+/**
+ * Only the permission decision crosses the native ABI. `restart_required`
+ * communicates the TCC transition without exposing platform error details.
+ */
+export interface AppshotPermission {
+  status: AppshotPermissionStatus
+  restartRequired: boolean
+}
+
+/**
+ * Closed, native-owned privacy status vocabulary. Platform failures never
+ * cross this boundary as strings.
+ */
+export declare const enum AppshotPermissionStatus {
+  Granted = 'granted',
+  Missing = 'missing'
+}
+
+/**
+ * The picker result deliberately has no source metadata. A handle is present
+ * only for a selected source and becomes invalid after its first capture or
+ * explicit disposal.
+ */
+export interface AppshotSelection {
+  status: AppshotSelectionStatus
+  handle?: string
+}
+
+/**
+ * Closed picker result vocabulary. A selected source is represented only by
+ * an opaque one-shot handle.
+ */
+export declare const enum AppshotSelectionStatus {
+  Selected = 'selected',
+  Cancelled = 'cancelled'
+}
+
 /** Recorded draw times from the debug frame overlay. */
 export interface DebugFrameOverlayStats {
   currentMs?: number
@@ -406,6 +526,18 @@ export interface EventPayload {
    * after a native drag commits; pointer moves never cross the FFI boundary.
    */
   ratio?: number
+  /**
+   * Committed serializable layout emitted by `<dock-workspace>`. Native
+   * pointer tracking never crosses the FFI boundary; this is sent only
+   * after a semantic mutation commits.
+   */
+  layout?: string
+  /** Base64-encoded bytes emitted by `<terminal>` keyboard input. */
+  dataBase64?: string
+  /** Terminal viewport row count emitted after native measurement. */
+  rows?: number
+  /** Terminal viewport column count emitted after native measurement. */
+  cols?: number
   modifiers?: EventModifiers
 }
 

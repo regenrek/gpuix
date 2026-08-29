@@ -19,6 +19,7 @@ use napi_derive::napi;
 
 use gpui::AppContext as _;
 
+use crate::appshot::{AppshotPermission, AppshotSelection, AppshotState};
 use crate::element_tree::EventPayload;
 use crate::renderer::{
     apply_batch_to_tree, debug_frame_overlay_mode_name, debug_frame_overlay_stats_js,
@@ -95,6 +96,13 @@ pub struct TestGpuixRenderer {
     /// Same handle GpuixView paints against, so tests can assert on the live
     /// selection after simulating a drag.
     selection: crate::text::SharedSelection,
+    appshot: Arc<Mutex<AppshotState>>,
+}
+
+impl Drop for TestGpuixRenderer {
+    fn drop(&mut self) {
+        self.appshot.lock().unwrap().dispose_all();
+    }
 }
 
 #[napi]
@@ -156,7 +164,96 @@ impl TestGpuixRenderer {
             tree,
             events,
             selection,
+            appshot: Arc::new(Mutex::new(AppshotState::default())),
         })
+    }
+
+    /// Deterministic appshot permission state. This double never opens a
+    /// system picker or captures a real window.
+    #[napi]
+    pub fn preflight_appshot_permission(&self) -> AppshotPermission {
+        self.appshot.lock().unwrap().test_permission()
+    }
+
+    #[napi]
+    pub fn request_appshot_permission(&self) -> AppshotPermission {
+        self.appshot.lock().unwrap().test_permission()
+    }
+
+    #[napi]
+    pub fn set_appshot_permission(&self, granted: bool) {
+        self.appshot.lock().unwrap().set_test_permission(granted);
+    }
+
+    #[napi]
+    pub fn set_appshot_selection(&self, selected: bool) {
+        self.appshot.lock().unwrap().set_test_selection(selected);
+    }
+
+    #[napi(ts_return_type = "Promise<AppshotSelection>")]
+    pub fn select_appshot_window(
+        &self,
+    ) -> AsyncTask<crate::renderer::NativeCallbackTask<AppshotSelection>> {
+        let selection = self.appshot.lock().unwrap().select_test_window();
+        AsyncTask::new(crate::renderer::NativeCallbackTask::completed(Ok(
+            selection,
+        )))
+    }
+
+    #[napi(ts_return_type = "Promise<Buffer>")]
+    pub fn capture_appshot_window(
+        &self,
+        handle: String,
+    ) -> AsyncTask<crate::renderer::NativeCallbackTask<Buffer>> {
+        let result = self.appshot.lock().unwrap().capture_test_handle(&handle);
+        AsyncTask::new(crate::renderer::NativeCallbackTask::completed(result))
+    }
+
+    #[napi(ts_return_type = "Promise<Buffer>")]
+    pub fn capture_frontmost_appshot(
+        &self,
+    ) -> AsyncTask<crate::renderer::NativeCallbackTask<Buffer>> {
+        AsyncTask::new(crate::renderer::NativeCallbackTask::completed(Ok(
+            crate::appshot::one_shot_png(),
+        )))
+    }
+
+    #[napi]
+    pub fn dispose_appshot_window(&self, handle: String) {
+        self.appshot.lock().unwrap().dispose_handle(&handle);
+    }
+
+    #[napi]
+    pub fn register_global_shortcut(&self, shortcut: String) -> Result<String> {
+        self.appshot.lock().unwrap().register_shortcut(shortcut)
+    }
+
+    #[napi]
+    pub fn unregister_global_shortcut(&self, token: String) -> Result<()> {
+        self.appshot.lock().unwrap().unregister_shortcut(&token)
+    }
+
+    /// Test-only native event injection. This keeps global-shortcut dispatch
+    /// under the same native event owner as production Carbon delivery rather
+    /// than inventing a JavaScript callback registry.
+    #[napi]
+    pub fn trigger_global_shortcut(&self, token: String) -> Result<()> {
+        if !self.appshot.lock().unwrap().shortcuts.contains_key(&token) {
+            return Err(crate::appshot::unavailable());
+        }
+        self.events.lock().unwrap().push(EventPayload {
+            element_id: 0.0,
+            event_type: "globalShortcut".to_string(),
+            value: Some(token),
+            ..Default::default()
+        });
+        Ok(())
+    }
+
+    /// Test hosts model cancellation without opening a platform dialog.
+    #[napi(ts_return_type = "Promise<string | null>")]
+    pub fn prompt_for_directory(&self) -> AsyncTask<crate::renderer::PromptForDirectoryTask> {
+        AsyncTask::new(crate::renderer::PromptForDirectoryTask::completed(Ok(None)))
     }
 
     // ── Mutation API (same interface as GpuixRenderer) ────────────────
@@ -259,6 +356,83 @@ impl TestGpuixRenderer {
             .map(|v| serde_json::to_string(v).unwrap_or_default()))
     }
 
+    /// Feed terminal output directly to the retained native emulator.
+    #[napi]
+    pub fn terminal_write(&self, element_id: f64, data_base64: String) -> Result<()> {
+        use base64::Engine as _;
+
+        let id = to_element_id(element_id)?;
+        {
+            let tree = self.tree.lock().unwrap();
+            let element = tree
+                .elements
+                .get(&id)
+                .ok_or_else(|| Error::from_reason(format!("element {id} does not exist")))?;
+            if element.element_type != "terminal" {
+                return Err(Error::from_reason(format!(
+                    "element {id} is {}, not terminal",
+                    element.element_type
+                )));
+            }
+        }
+        let data = base64::engine::general_purpose::STANDARD
+            .decode(data_base64)
+            .map_err(|error| Error::from_reason(format!("invalid terminal data: {error}")))?;
+
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| {
+                    view.custom_registry
+                        .command(id, "terminal", "write", &data)
+                        .map_err(Error::from_reason)?;
+                    cx.notify();
+                    window.refresh();
+                    Ok::<(), Error>(())
+                })
+            })
+            .map_err(|error| Error::from_reason(error.to_string()))??;
+            cx.run_until_parked();
+            Ok(())
+        })
+    }
+
+    /// Reset the retained native terminal emulator without changing its measured viewport.
+    #[napi]
+    pub fn terminal_reset(&self, element_id: f64) -> Result<()> {
+        let id = to_element_id(element_id)?;
+        {
+            let tree = self.tree.lock().unwrap();
+            let element = tree
+                .elements
+                .get(&id)
+                .ok_or_else(|| Error::from_reason(format!("element {id} does not exist")))?;
+            if element.element_type != "terminal" {
+                return Err(Error::from_reason(format!(
+                    "element {id} is {}, not terminal",
+                    element.element_type
+                )));
+            }
+        }
+
+        with_test_state(|cx, window, view| {
+            let view = view.clone();
+            cx.update_window(window, |_, window, app| {
+                view.update(app, |view, cx| {
+                    view.custom_registry
+                        .command(id, "terminal", "reset", &[])
+                        .map_err(Error::from_reason)?;
+                    cx.notify();
+                    window.refresh();
+                    Ok::<(), Error>(())
+                })
+            })
+            .map_err(|error| Error::from_reason(error.to_string()))??;
+            cx.run_until_parked();
+            Ok(())
+        })
+    }
+
     /// Signal that a batch of mutations is complete.
     /// In tests, this is a no-op — flush() handles the actual re-render.
     #[napi]
@@ -322,6 +496,16 @@ impl TestGpuixRenderer {
     pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
         with_test_state(|cx, window, _view| {
             cx.simulate_keystrokes(window, &keystrokes);
+            Ok(())
+        })
+    }
+
+    /// Commit text through the focused element's platform input handler.
+    /// This is the production IME insertion path, not a synthesized key event.
+    #[napi]
+    pub fn simulate_input(&self, input: String) -> Result<()> {
+        with_test_state(|cx, window, _view| {
+            cx.simulate_input(window, &input);
             Ok(())
         })
     }

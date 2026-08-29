@@ -1,8 +1,9 @@
 /// GPUIX JSX runtime types — maps intrinsic elements to GPUIX Props
-/// instead of DOM types. Activated via "jsxImportSource": "@gpuix/react".
+/// instead of DOM types. Activated via "jsxImportSource": "@regenrek/gpuix-react".
 
 import type {
   AnchoredProps,
+  CanvasProps,
   CodeProps,
   DiffProps,
   ImgProps,
@@ -10,6 +11,7 @@ import type {
   MarkdownProps,
   Props,
   SvgProps,
+  TerminalProps,
   TextareaProps,
   VirtualListProps,
 } from "./dist/types/host"
@@ -30,13 +32,14 @@ export namespace JSX {
     text: Props
     img: ImgProps
     svg: SvgProps
-    canvas: Props
+    canvas: CanvasProps
     input: InputProps
     textarea: TextareaProps
     anchored: AnchoredProps
     code: CodeProps
     diff: DiffProps
     markdown: MarkdownProps
+    terminal: TerminalProps
     "virtual-list": VirtualListProps
   }
 }

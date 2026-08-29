@@ -48,11 +48,11 @@ jobs:
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             bunTarget: bun-windows-x64
-            build: bun run build:release --target x86_64-pc-windows-msvc
+            build: bun run build --target x86_64-pc-windows-msvc
           - host: windows-latest
             target: aarch64-pc-windows-msvc
             bunTarget: bun-windows-arm64
-            build: bun run build:release --target aarch64-pc-windows-msvc
+            build: bun run build --target aarch64-pc-windows-msvc
     name: build - ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}
     defaults:
@@ -210,6 +210,7 @@ jobs:
 
   publish:
     name: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs:
       - build
@@ -227,9 +228,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
+
+      - name: Verify npm authentication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami
 
       - name: Install browser Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -256,53 +263,83 @@ jobs:
         run: |
           bunx @napi-rs/cli create-npm-dirs
           bunx @napi-rs/cli artifacts
+          bunx @napi-rs/cli pre-publish --skip-optional-publish
         working-directory: packages/native
 
       - name: List packages
         run: ls -R packages/native/npm/
         shell: bash
 
-      # NPM_TOKEN lives in Sigillo (npm/tokens, prod). CI only stores
-      # SIGILLO_TOKEN. Rotate the npm token in one place.
-      - name: Publish @gpuix/native
+      - name: Publish native platform packages
         env:
-          SIGILLO_TOKEN: ${{ secrets.SIGILLO_TOKEN }}
-          SIGILLO_PROJECT: ${{ vars.SIGILLO_PROJECT }}
-          SIGILLO_ENVIRONMENT: prod
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        working-directory: packages/native
+        shell: bash
+        run: |
+          for PACKAGE_JSON in npm/*/package.json; do
+            PACKAGE_DIR=$(dirname "$PACKAGE_JSON")
+            PACKAGE_NAME=$(node -p "require('./${PACKAGE_JSON}').name")
+            PACKAGE_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
+            if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version 2>/dev/null; then
+              echo "${PACKAGE_NAME}@${PACKAGE_VERSION} already published, skipping"
+            else
+              echo "Publishing ${PACKAGE_NAME}@${PACKAGE_VERSION}"
+              (cd "$PACKAGE_DIR" && npm publish --access public --provenance --tag regenrek)
+            fi
+          done
+
+      - name: Publish @regenrek/gpuix-native
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           CURRENT_VERSION=$(node -p "require('./packages/native/package.json').version")
-          if npm view "@gpuix/native@${CURRENT_VERSION}" version 2>/dev/null; then
-            echo "@gpuix/native@${CURRENT_VERSION} already published, skipping"
+          if npm view "@regenrek/gpuix-native@${CURRENT_VERSION}" version 2>/dev/null; then
+            echo "@regenrek/gpuix-native@${CURRENT_VERSION} already published, skipping"
           else
-            echo "Publishing @gpuix/native@${CURRENT_VERSION}"
+            echo "Publishing @regenrek/gpuix-native@${CURRENT_VERSION}"
             cd packages/native
-            bunx sigillo run --command 'printf "//registry.npmjs.org/:_authToken=%s\n" "$NPM_TOKEN" > /tmp/gpuix-npmrc && NPM_CONFIG_USERCONFIG=/tmp/gpuix-npmrc npm publish --access public --provenance'
+            npm publish --access public --provenance --tag regenrek
           fi
 
-      - name: Build @gpuix/react
+      - name: Build @regenrek/gpuix-react
         run: bun run build
         working-directory: packages/react
 
-      - name: Publish @gpuix/react
+      - name: Publish @regenrek/gpuix-react
         env:
-          SIGILLO_TOKEN: ${{ secrets.SIGILLO_TOKEN }}
-          SIGILLO_PROJECT: ${{ vars.SIGILLO_PROJECT }}
-          SIGILLO_ENVIRONMENT: prod
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           CURRENT_VERSION=$(node -p "require('./packages/react/package.json').version")
-          if npm view "@gpuix/react@${CURRENT_VERSION}" version 2>/dev/null; then
-            echo "@gpuix/react@${CURRENT_VERSION} already published, skipping"
+          if npm view "@regenrek/gpuix-react@${CURRENT_VERSION}" version 2>/dev/null; then
+            echo "@regenrek/gpuix-react@${CURRENT_VERSION} already published, skipping"
           else
-            echo "Publishing @gpuix/react@${CURRENT_VERSION}"
+            echo "Publishing @regenrek/gpuix-react@${CURRENT_VERSION}"
             cd packages/react
             node -e "
               const fs = require('fs')
               const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
               const native = require('../native/package.json').version
-              pkg.dependencies['@gpuix/native'] = '^' + native
+              pkg.dependencies['@regenrek/gpuix-native'] = native
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
             "
-            bunx sigillo run --command 'printf "//registry.npmjs.org/:_authToken=%s\n" "$NPM_TOKEN" > /tmp/gpuix-npmrc && NPM_CONFIG_USERCONFIG=/tmp/gpuix-npmrc npm publish --access public --provenance'
+            npm publish --access public --provenance --tag regenrek
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./packages/react/package.json').version")
+          TAG="@regenrek/gpuix-react@${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release ${TAG} already exists, skipping"
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --generate-notes \
+              --prerelease
           fi
 
       - name: Download example artifacts
@@ -319,7 +356,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./packages/react/package.json').version")
-          TAG="@gpuix/react@${VERSION}"
+          TAG="@regenrek/gpuix-react@${VERSION}"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "No GitHub release for ${TAG}, skipping example upload"
             exit 0

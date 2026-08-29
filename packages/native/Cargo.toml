@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+base64 = "0.22"
 csscolorparser = "0.8.3"
 log = "0.4"
 env_logger = "0.11"
@@ -30,6 +31,7 @@ unicode-segmentation = "1"
 web-time = "1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
 gpui = { path = "../../zed/crates/gpui", default-features = false, features = ["font-kit", "profiler"] }
 gpui_platform = { path = "../../zed/crates/gpui_platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
 
@@ -48,6 +50,10 @@ web-sys = { version = "0.3", features = ["Navigator", "Window"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"
 core-graphics = "=0.24.0"
+core-foundation = "0.9"
+block = "0.1"
+cocoa = "0.25"
+objc = "0.2"
 # Production uses the embedded AppKit loop; tests use the native Metal renderer.
 gpui_macos = { path = "../../zed/crates/gpui_macos", default-features = false, features = ["font-kit"] }
 

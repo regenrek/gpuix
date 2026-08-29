@@ -2,7 +2,7 @@
 
 import React, { cloneElement, forwardRef, isValidElement, useCallback, useState } from "react"
 import type { ReactElement, ReactNode, Ref } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type { Props, PublicInstance, StyleDesc } from "../types/host.js"
 
 export type FloatingSide = "top" | "right" | "bottom" | "left"

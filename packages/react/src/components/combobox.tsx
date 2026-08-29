@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type { InputProps, Props, PublicInstance } from "../types/host.js"
 import { useGpuix } from "../hooks/use-gpuix.js"
 import {

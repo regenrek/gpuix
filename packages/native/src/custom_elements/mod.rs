@@ -15,12 +15,16 @@ use std::collections::{HashMap, HashSet};
 use crate::renderer::EventCallback;
 
 pub mod anchored;
+pub mod canvas;
 pub mod code;
 pub mod diff;
+pub mod dock_workspace;
 pub mod img;
 pub mod input;
 pub mod markdown;
 pub mod split_view;
+#[cfg(not(target_family = "wasm"))]
+pub mod terminal;
 
 // ── Render context ───────────────────────────────────────────────────
 
@@ -47,6 +51,8 @@ pub struct CustomRenderContext<'a> {
     pub selectable: bool,
     /// Inherited selection wash colour.
     pub selection_wash: gpui::Hsla,
+    /// The renderer's automation-aware clock, shared by deterministic native drawing.
+    pub now: web_time::Instant,
 }
 
 impl CustomRenderContext<'_> {
@@ -120,6 +126,12 @@ pub trait CustomElement: 'static {
     /// existing cleanup implementation by default.
     fn destroy_with_window(&mut self, _window: &mut gpui::Window) {
         self.destroy();
+    }
+
+    /// Apply an imperative command without routing high-frequency state through
+    /// React props. Adapters opt in explicitly; unsupported commands fail.
+    fn command(&mut self, command: &str, _payload: &[u8]) -> Result<(), String> {
+        Err(format!("unsupported custom-element command: {command}"))
     }
 }
 
@@ -195,12 +207,16 @@ impl CustomElementRegistry {
         registry.register(Box::new(input::InputFactory));
         registry.register(Box::new(input::TextareaFactory));
         registry.register(Box::new(anchored::AnchoredFactory));
+        registry.register(Box::new(canvas::CanvasFactory));
         registry.register(Box::new(img::ImgFactory));
         registry.register(Box::new(img::SvgFactory));
         registry.register(Box::new(code::CodeFactory));
         registry.register(Box::new(diff::DiffFactory));
+        registry.register(Box::new(dock_workspace::DockWorkspaceFactory));
         registry.register(Box::new(markdown::MarkdownFactory));
         registry.register(Box::new(split_view::SplitViewFactory));
+        #[cfg(not(target_family = "wasm"))]
+        registry.register(Box::new(terminal::TerminalFactory));
         registry
     }
 
@@ -271,6 +287,26 @@ impl CustomElementRegistry {
             ..ctx
         };
         entry.element.render(ctx, window, cx)
+    }
+
+    /// Route one imperative command to the adapter retained for `id`.
+    pub fn command(
+        &mut self,
+        id: u64,
+        element_type: &str,
+        command: &str,
+        payload: &[u8],
+    ) -> Result<(), String> {
+        let entry = self
+            .get_or_create(id, element_type, None)
+            .ok_or_else(|| format!("unknown custom element type: {element_type}"))?;
+        if entry.element_type != element_type {
+            return Err(format!(
+                "element {id} is {}, not {element_type}",
+                entry.element_type
+            ));
+        }
+        entry.element.command(command, payload)
     }
 
     /// Called when React destroys an element.

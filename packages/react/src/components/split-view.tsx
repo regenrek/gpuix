@@ -1,6 +1,6 @@
 import { Children, createElement } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type { StyleDesc } from "../types/host.js"
 
 export interface SplitViewProps {

@@ -1,8 +1,8 @@
 // GPUIX component definitions and native motion wrappers.
 
-import { createElement, forwardRef, useCallback, useState } from "react"
+import { createElement, forwardRef, useCallback, useLayoutEffect, useState } from "react"
 import type { ReactElement, ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type {
   MotionProps,
   Props,
@@ -22,12 +22,16 @@ export const gpuixComponents = {
   anchored: "anchored",
   "virtual-list": "virtual-list",
   "split-view": "split-view",
+  "dock-workspace": "dock-workspace",
+  terminal: "terminal",
 } as const
 
 export type GpuixComponentType = keyof typeof gpuixComponents
 
 export { SplitView } from "./split-view.js"
 export type { SplitViewProps } from "./split-view.js"
+export { DockWorkspace } from "./dock-workspace.js"
+export type { DockLayout, DockPanel, DockWorkspaceProps } from "./dock-workspace.js"
 
 export interface MotionDivProps extends MotionProps {
   children?: ReactNode
@@ -105,6 +109,20 @@ export const VirtualList = forwardRef<PublicInstance, WindowedVirtualListProps>(
     const [range, setRange] = useState(() =>
       initialWindow({ itemCount, pad, alignment, followTail }),
     )
+    useLayoutEffect(() => {
+      setRange((current) => {
+        if (followTail) {
+          const next = initialWindow({ itemCount, pad, alignment, followTail })
+          return current.start === next.start && current.end === next.end ? current : next
+        }
+        if (current.start >= itemCount) {
+          const next = { start: Math.max(0, itemCount - pad), end: itemCount }
+          return current.start === next.start && current.end === next.end ? current : next
+        }
+        const next = { start: current.start, end: Math.min(current.end, itemCount) }
+        return current.start === next.start && current.end === next.end ? current : next
+      })
+    }, [alignment, followTail, itemCount, pad])
     const handleRange = useCallback(
       (event: EventPayload & { startIndex?: number | null; endIndex?: number | null }) => {
         const next = {

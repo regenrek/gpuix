@@ -230,6 +230,7 @@ struct TextEditorElement {
     value: String,
     placeholder: String,
     read_only: bool,
+    secure: bool,
     min_rows: usize,
     max_rows: usize,
     last_prop_value: Option<String>,
@@ -244,6 +245,7 @@ impl TextEditorElement {
             value: String::new(),
             placeholder: String::new(),
             read_only: false,
+            secure: false,
             min_rows: 1,
             max_rows: if multiline { 10 } else { 1 },
             last_prop_value: None,
@@ -277,6 +279,7 @@ impl CustomElement for TextEditorElement {
                 let placeholder = self.placeholder.clone();
                 let multiline = self.multiline;
                 let read_only = self.read_only;
+                let secure = self.secure;
                 let min_rows = self.min_rows;
                 let max_rows = self.max_rows;
                 let caret_color = self.theme.caret;
@@ -296,6 +299,7 @@ impl CustomElement for TextEditorElement {
                     placeholder: placeholder.into(),
                     multiline,
                     read_only,
+                    secure,
                     min_rows,
                     max_rows,
                     selected_range: cursor..cursor,
@@ -331,6 +335,11 @@ impl CustomElement for TextEditorElement {
             state.emits_key_up = emits_key_up;
             state.placeholder = self.placeholder.clone().into();
             state.read_only = self.read_only;
+            if state.secure != self.secure {
+                state.secure = self.secure;
+                state.follow_cursor = true;
+                cx.notify();
+            }
             state.min_rows = self.min_rows.max(1);
             state.max_rows = self.max_rows.max(state.min_rows);
             if state.caret_color != self.theme.caret {
@@ -382,6 +391,7 @@ impl CustomElement for TextEditorElement {
             "value" => self.value = value.as_str().unwrap_or_default().to_string(),
             "placeholder" => self.placeholder = value.as_str().unwrap_or_default().to_string(),
             "readOnly" => self.read_only = value.as_bool().unwrap_or(false),
+            "secure" => self.secure = !self.multiline && value.as_bool().unwrap_or(false),
             "minRows" => self.min_rows = value.as_u64().unwrap_or(1) as usize,
             "maxRows" => {
                 self.max_rows = value
@@ -399,6 +409,7 @@ impl CustomElement for TextEditorElement {
             "value",
             "placeholder",
             "readOnly",
+            "secure",
             "minRows",
             "maxRows",
             "theme",
@@ -435,6 +446,7 @@ struct TextEditorState {
     placeholder: SharedString,
     multiline: bool,
     read_only: bool,
+    secure: bool,
     min_rows: usize,
     max_rows: usize,
     selected_range: Range<usize>,
@@ -844,7 +856,7 @@ impl TextEditorState {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.secure && !self.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
             ));
@@ -852,7 +864,7 @@ impl TextEditorState {
     }
 
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only || self.selected_range.is_empty() {
+        if self.read_only || self.secure || self.selected_range.is_empty() {
             return;
         }
         self.copy(&Copy, window, cx);
@@ -1042,6 +1054,8 @@ impl TextEditorState {
     fn layout_text(&mut self, width: Pixels, style: &TextStyle, window: &mut Window) -> f32 {
         let (display, is_placeholder) = if self.content.is_empty() {
             (self.placeholder.clone(), true)
+        } else if self.secure {
+            (SharedString::from("*".repeat(self.content.len())), false)
         } else {
             (SharedString::from(self.content.clone()), false)
         };
@@ -1531,6 +1545,8 @@ impl gpui::Element for EditorTextElement {
                 self.input.update(cx, |input, _| {
                     let display = if input.content.is_empty() {
                         input.placeholder.clone()
+                    } else if input.secure {
+                        SharedString::from("*".repeat(input.content.len()))
                     } else {
                         input.content.clone().into()
                     };

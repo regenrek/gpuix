@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   useGpuix,
   type StyleDesc,
-} from '@gpuix/react'
+} from '@regenrek/gpuix-react'
 import { SafeMdxRenderer } from 'safe-mdx'
 import { mdxParse } from 'safe-mdx/parse'
 import type { Root } from 'mdast'

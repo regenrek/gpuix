@@ -204,6 +204,12 @@ impl SyntaxPalette {
 /// height up front.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
+    // Terminals.
+    pub terminal_text_size: f32,
+    pub terminal_line_height: f32,
+    pub terminal_padding_x: f32,
+    pub terminal_padding_y: f32,
+
     // Code blocks.
     pub code_text_size: f32,
     pub code_line_height: f32,
@@ -269,6 +275,10 @@ impl Metrics {
                 log::warn!("ignoring invalid theme metric {value}");
             }
         };
+        set(&mut self.terminal_text_size, o.terminal_text_size);
+        set(&mut self.terminal_line_height, o.terminal_line_height);
+        set(&mut self.terminal_padding_x, o.terminal_padding_x);
+        set(&mut self.terminal_padding_y, o.terminal_padding_y);
         set(&mut self.code_text_size, o.code_text_size);
         set(&mut self.code_line_height, o.code_line_height);
         set(&mut self.code_padding_x, o.code_padding_x);
@@ -343,6 +353,10 @@ impl Metrics {
     pub fn hash_into(&self, hasher: &mut impl std::hash::Hasher) {
         let mut feed = |value: f32| hasher.write_u32(value.to_bits());
         for value in [
+            self.terminal_text_size,
+            self.terminal_line_height,
+            self.terminal_padding_x,
+            self.terminal_padding_y,
             self.code_text_size,
             self.code_line_height,
             self.code_padding_x,
@@ -385,6 +399,11 @@ impl Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Self {
+            terminal_text_size: 13.0,
+            terminal_line_height: 19.0,
+            terminal_padding_x: 10.0,
+            terminal_padding_y: 8.0,
+
             code_text_size: 12.5,
             code_line_height: 18.0,
             code_padding_x: 12.0,
@@ -659,6 +678,11 @@ pub struct ThemeOverride {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MetricsOverride {
+    pub terminal_text_size: Option<f64>,
+    pub terminal_line_height: Option<f64>,
+    pub terminal_padding_x: Option<f64>,
+    pub terminal_padding_y: Option<f64>,
+
     pub code_text_size: Option<f64>,
     pub code_line_height: Option<f64>,
     pub code_padding_x: Option<f64>,

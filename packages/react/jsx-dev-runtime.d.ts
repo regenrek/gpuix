@@ -2,6 +2,7 @@
 
 import type {
   AnchoredProps,
+  CanvasProps,
   CodeProps,
   DiffProps,
   ImgProps,
@@ -9,6 +10,7 @@ import type {
   MarkdownProps,
   Props,
   SvgProps,
+  TerminalProps,
   TextareaProps,
   VirtualListProps,
 } from "./dist/types/host"
@@ -29,13 +31,14 @@ export namespace JSX {
     text: Props
     img: ImgProps
     svg: SvgProps
-    canvas: Props
+    canvas: CanvasProps
     input: InputProps
     textarea: TextareaProps
     anchored: AnchoredProps
     code: CodeProps
     diff: DiffProps
     markdown: MarkdownProps
+    terminal: TerminalProps
     "virtual-list": VirtualListProps
   }
 }

@@ -35,7 +35,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 │  └─────────────────────────────────────────────────────────┘   │
 │                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  @gpuix/react (packages/react)                           │   │
+│  │  @regenrek/gpuix-react (packages/react)                           │   │
 │  │                                                          │   │
 │  │  - React Reconciler (react-reconciler)                   │   │
 │  │  - Builds element tree from React components             │   │
@@ -49,7 +49,7 @@ React (TypeScript)  →  napi-rs  →  GPUI (Rust)  →  GPU
 │  Rust / Native                                                  │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  @gpuix/native (packages/native)                         │   │
+│  │  @regenrek/gpuix-native (packages/native)                         │   │
 │  │                                                          │   │
 │  │  - GpuixRenderer: receives JSON, triggers re-render      │   │
 │  │  - build_element(): ElementDesc → GPUI elements          │   │
@@ -276,7 +276,7 @@ that, not the live window. The tick loop will drown the mount.
 
 ```ts
 import React from 'react'
-import { createTestRoot } from '@gpuix/react'
+import { createTestRoot } from '@regenrek/gpuix-react'
 import { ChatApp } from './chat'
 
 const root = createTestRoot()
@@ -317,7 +317,7 @@ queue.push(['setStyle', id, styleObject])
 queue.push(['setCustomPropValue', id, 'side', 'top'])
 ```
 
-After a JS reconciler change, **build `@gpuix/react`**. `examples/` and
+After a JS reconciler change, **build `@regenrek/gpuix-react`**. `examples/` and
 `bun --hot chat.tsx` load `packages/react/dist`, not `src`. packages/react
 vitest uses `src`. You will think the fix works in one suite and fail in the
 app.
@@ -406,15 +406,15 @@ Load the `changesets` skill for format and rules. If the change fixes a GitHub i
 
 **Never publish from a local machine.** CI is the only release path.
 
-`.github/workflows/ci.yml` builds `@gpuix/native` for every napi target (macOS arm64/x64, Linux x64/arm64, Windows x64/arm64), uploads the `.node` artifacts, then the `publish` job downloads them, runs `napi create-npm-dirs` + `napi artifacts`, and publishes `@gpuix/native` and `@gpuix/react`.
+`.github/workflows/ci.yml` builds `@regenrek/gpuix-native` for every napi target (macOS arm64/x64, Linux x64/arm64, Windows x64/arm64), uploads the `.node` artifacts, then the `publish` job downloads them, runs `napi create-npm-dirs` + `napi artifacts`, and publishes `@regenrek/gpuix-native` and `@regenrek/gpuix-react`.
 
-Each build job also compiles `examples/chat.tsx` with `bun build --compile` against that target's `.node`, and uploads `example-chat-<target>`. On `main`, the publish job attaches those binaries to the `@gpuix/react@x.y.z` GitHub release.
+Each build job also compiles `examples/chat.tsx` with `bun build --compile` against that target's `.node`, and uploads `example-chat-<target>`. On `main`, the publish job attaches those binaries to the `@regenrek/gpuix-react@x.y.z` GitHub release.
 
-Publish order is required. `@gpuix/react` depends on `@gpuix/native` (`workspace:^`). If React publishes first, an install in that window cannot resolve native.
+Publish order is required. `@regenrek/gpuix-react` depends on `@regenrek/gpuix-native` (`workspace:^`). If React publishes first, an install in that window cannot resolve native.
 
 1. `napi pre-publish` publishes the per-platform packages (`darwin-arm64`, `linux-x64-gnu`, …)
-2. `npm publish` publishes `@gpuix/native`
-3. `npm publish` publishes `@gpuix/react`
+2. `npm publish` publishes `@regenrek/gpuix-native`
+3. `npm publish` publishes `@regenrek/gpuix-react`
 
 A local `npm publish` / `bun publish` would ship only the host binary and break every other platform. `prepublishOnly` exits if `CI` is unset.
 
@@ -629,7 +629,7 @@ here. Never run `git reset` in `zed/` to "undo" PR work.
 
 ### PRs to GPUIX
 
-When you open a PR with `gh pr create` against **this repo** (`remorses/gpuix`),
+When you open a PR with `gh pr create` against **this repo** (`regenrek/gpuix`),
 the body must name the **harness**, **agent**, and **model** that wrote the
 change. Then put **every user prompt** from the session in a collapsed
 `<details>` block. Reviewers use that to judge prompt quality and how much
@@ -686,6 +686,7 @@ belong in README. This list is only the remaining engineering work.
 - [x] Window chrome (`titlebarTransparent`, `windowBackground`, traffic-light position)
 - [x] Last window close quits the process
 - [x] Debug frame overlay (`setDebugFrameOverlay`)
+- [x] `<canvas>` bounded retained drawing (`line`, `rect`, `circle`, `particle`)
 
 ### TODO
 
@@ -693,10 +694,6 @@ belong in README. This list is only the remaining engineering work.
 
 - [ ] **Background highlighting** - move Syntect off the frame thread once
       there is a way to request a repaint from a background task
-
-#### Medium Priority
-
-- [ ] **Canvas** - custom drawing element (`<canvas>` is typed, not implemented)
 
 #### Low Priority
 
@@ -778,7 +775,7 @@ Mark targets with `testId`. Then either:
   on stdin only when stdin is a **pipe**
 
 ```ts
-import { launch } from '@gpuix/react/automation'
+import { launch } from '@regenrek/gpuix-react/automation'
 
 const app = await launch({ command: 'bun', args: ['chat.tsx'], cwd: 'examples' })
 await app.getByTestId('sidebar-collapse').waitFor({ timeoutMs: 30_000 })
@@ -830,7 +827,7 @@ If remorses says OK, follow the rest of this file and these rules.
 **Must**
 
 - Add a `.changeset/*.md` file for every user-facing fix or feature. Put `Fixes #N` on its own line when the work closes an issue
-- Run the package test scripts: `packages/react` then build `@gpuix/react`, then `examples`
+- Run the package test scripts: `packages/react` then build `@regenrek/gpuix-react`, then `examples`
 - Keep one scroll parent. Nested scrolling is not supported
 - Send every painted string through `crate::text`. Never `div().child(some_string)`
 - Put layout numbers on `Theme::metrics`, not new Rust constants

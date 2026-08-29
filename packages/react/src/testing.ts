@@ -10,7 +10,7 @@
 /// the React event registry via handleGpuixEvent.
 
 import type { ReactNode } from "react"
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type {
   DebugFrameOverlayMode,
   DebugFrameOverlayStats,
@@ -26,10 +26,16 @@ export {
 export type { MacCpuThrottle } from "./cpu-throttle.js"
 
 interface NativeTestRendererApi extends NativeRenderer {
+  setAppshotPermission(granted: boolean): void
+  setAppshotSelection(selected: boolean): void
+  triggerGlobalShortcut(token: string): void
   applyBatch(json: string): number[]
+  terminalWrite(elementId: number, dataBase64: string): void
+  terminalReset(elementId: number): void
   flush(): void
   drainEvents(): EventPayload[]
   simulateKeystrokes(keystrokes: string): void
+  simulateInput(input: string): void
   focusElement(elementId: number): void
   simulateKeyDown(keystroke: string, isHeld?: boolean): void
   simulateKeyUp(keystroke: string): void
@@ -71,7 +77,7 @@ interface NativeTestRendererConstructor {
 let NativeTestRenderer: NativeTestRendererConstructor | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const native = require("@gpuix/native") as {
+  const native = require("@regenrek/gpuix-native") as {
     TestGpuixRenderer?: NativeTestRendererConstructor
   }
   if (native.TestGpuixRenderer) {
@@ -102,6 +108,8 @@ export interface TestElement {
 
 export class TestRenderer implements NativeRenderer {
   commitCount = 0
+  private directoryPromptResponse: string | null = null
+  private openedUrls: string[] = []
 
   /** Native TestGpuixRenderer — all state lives here in Rust's RetainedTree. */
   private native: NativeTestRendererApi
@@ -113,6 +121,78 @@ export class TestRenderer implements NativeRenderer {
       )
     }
     this.native = new NativeTestRenderer()
+  }
+
+  /** Set the next deterministic directory-picker result for a React test. */
+  setDirectoryPromptResponse(path: string | null): void {
+    this.directoryPromptResponse = path
+  }
+
+  async promptForDirectory(): Promise<string | null> {
+    const response = this.directoryPromptResponse
+    this.directoryPromptResponse = null
+    return response
+  }
+
+  openUrl(url: string): void {
+    this.openedUrls.push(url)
+  }
+
+  takeOpenedUrls(): string[] {
+    return this.openedUrls.splice(0)
+  }
+
+  setAppshotPermission(granted: boolean): void {
+    this.native.setAppshotPermission(granted)
+  }
+
+  preflightAppshotPermission(): ReturnType<NativeRenderer["preflightAppshotPermission"]> {
+    return this.native.preflightAppshotPermission()
+  }
+
+  requestAppshotPermission(): ReturnType<NativeRenderer["requestAppshotPermission"]> {
+    return this.native.requestAppshotPermission()
+  }
+
+  setAppshotSelection(selected: boolean): void {
+    this.native.setAppshotSelection(selected)
+  }
+
+  selectAppshotWindow(): ReturnType<NativeRenderer["selectAppshotWindow"]> {
+    return this.native.selectAppshotWindow()
+  }
+
+  captureAppshotWindow(
+    handle: Parameters<NativeRenderer["captureAppshotWindow"]>[0]
+  ): ReturnType<NativeRenderer["captureAppshotWindow"]> {
+    return this.native.captureAppshotWindow(handle)
+  }
+
+  captureFrontmostAppshot(): ReturnType<NativeRenderer["captureFrontmostAppshot"]> {
+    return this.native.captureFrontmostAppshot()
+  }
+
+  disposeAppshotWindow(
+    handle: Parameters<NativeRenderer["disposeAppshotWindow"]>[0]
+  ): ReturnType<NativeRenderer["disposeAppshotWindow"]> {
+    this.native.disposeAppshotWindow(handle)
+  }
+
+  registerGlobalShortcut(
+    shortcut: Parameters<NativeRenderer["registerGlobalShortcut"]>[0]
+  ): ReturnType<NativeRenderer["registerGlobalShortcut"]> {
+    return this.native.registerGlobalShortcut(shortcut)
+  }
+
+  unregisterGlobalShortcut(
+    token: Parameters<NativeRenderer["unregisterGlobalShortcut"]>[0]
+  ): ReturnType<NativeRenderer["unregisterGlobalShortcut"]> {
+    this.native.unregisterGlobalShortcut(token)
+  }
+
+  /** Test-only native shortcut injection; no JavaScript callback owner exists. */
+  triggerGlobalShortcut(token: string): void {
+    this.native.triggerGlobalShortcut(token)
   }
 
   // ── NativeRenderer interface (all mutations delegate to native) ──
@@ -155,6 +235,14 @@ export class TestRenderer implements NativeRenderer {
 
   setCustomProp(id: number, key: string, valueJson: string): void {
     this.native.setCustomProp(id, key, valueJson)
+  }
+
+  terminalWrite(elementId: number, dataBase64: string): void {
+    this.native.terminalWrite(elementId, dataBase64)
+  }
+
+  terminalReset(elementId: number): void {
+    this.native.terminalReset(elementId)
   }
 
   commitMutations(): void {
@@ -221,6 +309,16 @@ export class TestRenderer implements NativeRenderer {
     this.native.focusElement(elementId)
     this.native.simulateKeystrokes(keystrokes)
     this.dispatchNativeEvents()
+  }
+
+  /** Commit text through the focused element's platform IME handler. */
+  nativeSimulateInput(elementId: number, input: string): void {
+    this.native.flush()
+    this.native.focusElement(elementId)
+    this.native.flush()
+    this.native.simulateInput(input)
+    this.dispatchNativeEvents()
+    this.native.flush()
   }
 
   /** End-to-end: focus element → simulate a single key down through GPUI →

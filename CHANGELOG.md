@@ -5,7 +5,7 @@
 1. **Native `motion.div` animations** — animate from an initial style to a target style. React sends the targets once. Rust interpolates the presentation style and requests GPUI frames. The React tree is not reconciled on each frame.
 
    ```tsx
-   import { motion } from '@gpuix/react'
+   import { motion } from '@regenrek/gpuix-react'
 
    <motion.div
      initial={{ width: 0, opacity: 0 }}
@@ -25,7 +25,7 @@
 2. **Playwright-like automation API** — mark elements with `testId`, then drive them from tests or from another process. Ordinary log lines are ignored.
 
    ```ts
-   import { connectTest } from '@gpuix/react/automation'
+   import { connectTest } from '@regenrek/gpuix-react/automation'
 
    const app = await connectTest(renderer)
    await app.getByTestId('inc').click()
@@ -42,7 +42,7 @@
    A live app listens on stdin when stdin is a pipe, not a TTY. A terminal run is unchanged. `launch({ command, args })` pipes stdin and speaks SSE `data:` lines:
 
    ```ts
-   import { launch } from '@gpuix/react/automation'
+   import { launch } from '@regenrek/gpuix-react/automation'
 
    const app = await launch({ command: 'bun', args: ['examples/chat.tsx'] })
    await app.getByTestId('composer').fill('hello')
@@ -73,7 +73,7 @@
 2. **Window chrome at open time** — `render()` now honors a transparent titlebar, traffic-light position, and a blurred or transparent window background. Traffic lights can sit in a sidebar. The native titlebar does not take a strip above the app.
 
    ```tsx
-   import { render } from '@gpuix/react'
+   import { render } from '@regenrek/gpuix-react'
 
    render(<App />, {
      title: 'Waku',
@@ -108,7 +108,7 @@
 4. **Debug frame overlay** — see draw time on a live window. The overlay paints after layout. It is not a React element.
 
    ```tsx
-   import { render } from '@gpuix/react'
+   import { render } from '@regenrek/gpuix-react'
 
    render(<App />, { title: 'My App', debugFrameOverlay: 'full' })
    ```
@@ -256,7 +256,7 @@
 3. **`render()` remounts React on the same native window** — a `bun --hot` save remounts the tree without creating a second window.
 
    ```tsx
-   import { render } from '@gpuix/react'
+   import { render } from '@regenrek/gpuix-react'
 
    function App() {
      return <div style={{ padding: 16 }}>hello</div>
@@ -278,7 +278,7 @@
 4. **Headless Select, Combobox, and Tooltip** — unstyled primitives with the same compound composition used by shadcn. Import a namespace, wrap it in a local `components/ui/*.tsx`, and use those styled components in the app.
 
    ```tsx
-   import * as SelectPrimitive from '@gpuix/react/select'
+   import * as SelectPrimitive from '@regenrek/gpuix-react/select'
 
    <SelectPrimitive.Root value={model} onValueChange={setModel}>
      <SelectPrimitive.Trigger>
@@ -294,11 +294,11 @@
 
    | Import | Main parts |
    |---|---|
-   | `@gpuix/react/select` | `Root`, `Trigger`, `Value`, `Content`, `Item` |
-   | `@gpuix/react/combobox` | `Root`, `Input`, `Content`, `List`, `Item`, `Empty` |
-   | `@gpuix/react/tooltip` | `Provider`, `Root`, `Trigger`, `Content` |
+   | `@regenrek/gpuix-react/select` | `Root`, `Trigger`, `Value`, `Content`, `Item` |
+   | `@regenrek/gpuix-react/combobox` | `Root`, `Input`, `Content`, `List`, `Item`, `Empty` |
+   | `@regenrek/gpuix-react/tooltip` | `Provider`, `Root`, `Trigger`, `Content` |
 
-   The barrel `@gpuix/react` still exports the prefixed names (`Select`, `SelectTrigger`, and the rest).
+   The barrel `@regenrek/gpuix-react` still exports the prefixed names (`Select`, `SelectTrigger`, and the rest).
 
    Each part accepts GPUIX styles, including state-based item style functions. Menus support native focus, keyboard navigation, outside-click dismissal, window-edge snapping, and click occlusion. Comboboxes use the native text input and rank prefix matches before substring matches.
 
@@ -333,7 +333,7 @@
 7. **`startFrameLoop()`** — stop burning CPU on idle apps. The old `setImmediate` loop spun at roughly 27,000 ticks per second and measured **73.5% CPU** on an idle counter. `startFrameLoop` paces at ~125fps (~1% CPU).
 
    ```tsx
-   import { startFrameLoop } from '@gpuix/react'
+   import { startFrameLoop } from '@regenrek/gpuix-react'
 
    startFrameLoop(renderer)
    ```
@@ -418,12 +418,12 @@
 
 - **Add GitHub Actions CI/CD pipeline** (`.github/workflows/ci.yml`) — builds native binaries for 4 targets (macOS arm64/x64, Linux x64/arm64), runs tests on macOS, and publishes to npm.
 - Publish is version-gated: skips if the package.json version is already on npm. Bump version + push to main to release.
-- Two packages published: `@gpuix/native` (per-platform binaries via napi pre-publish) and `@gpuix/react` (pure TypeScript).
+- Two packages published: `@regenrek/gpuix-native` (per-platform binaries via napi pre-publish) and `@regenrek/gpuix-react` (pure TypeScript).
 - Generate `packages/native/npm/` per-platform package scaffolding (darwin-arm64, darwin-x64, linux-x64-gnu, linux-arm64-gnu).
 - Add `build:release` script for Linux CI builds without test-support (gpui_macos is macOS-only).
 - macOS builds include test-support by default so published binaries ship `TestGpuixRenderer` for user testing.
-- Update `@gpuix/react` dependency on `@gpuix/native` from `workspace:*` to `workspace:^` for publishing.
-- Add `publishConfig` to `@gpuix/react` package.json.
+- Update `@regenrek/gpuix-react` dependency on `@regenrek/gpuix-native` from `workspace:*` to `workspace:^` for publishing.
+- Add `publishConfig` to `@regenrek/gpuix-react` package.json.
 - Document Cargo feature gate in Cargo.toml comments.
 
 ## 2026-03-02 16:32 UTC

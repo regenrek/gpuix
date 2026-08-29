@@ -1,22 +1,21 @@
-import type { EventPayload } from "@gpuix/native"
+import type { EventPayload } from "@regenrek/gpuix-native"
 import type { Container, EventHandlerMap, NativeRenderer } from "../types/host.js"
-
-const containersByRenderer = new WeakMap<NativeRenderer, Container>()
+import { runtimeState } from "./runtime-state.js"
 
 export function attachRoot(renderer: NativeRenderer, container: Container): void {
-  containersByRenderer.set(renderer, container)
+  runtimeState().containersByRenderer.set(renderer, container)
 }
 
 export function detachRoot(renderer: NativeRenderer): void {
-  containersByRenderer.delete(renderer)
+  runtimeState().containersByRenderer.delete(renderer)
 }
 
 export function containerForRenderer(renderer: NativeRenderer): Container | undefined {
-  return containersByRenderer.get(renderer)
+  return runtimeState().containersByRenderer.get(renderer)
 }
 
 export function handleGpuixEvent(payload: EventPayload, renderer: NativeRenderer): void {
-  const container = containersByRenderer.get(renderer)
+  const container = runtimeState().containersByRenderer.get(renderer)
   if (!container) return
   const elementHandlers = container.eventHandlers.get(payload.elementId)
   if (!elementHandlers) return

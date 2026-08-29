@@ -110,6 +110,20 @@ pub struct EventPayload {
     /// after a native drag commits; pointer moves never cross the FFI boundary.
     pub ratio: Option<f64>,
 
+    /// Committed serializable layout emitted by `<dock-workspace>`. Native
+    /// pointer tracking never crosses the FFI boundary; this is sent only
+    /// after a semantic mutation commits.
+    pub layout: Option<String>,
+
+    /// Base64-encoded bytes emitted by `<terminal>` keyboard input.
+    pub data_base64: Option<String>,
+
+    /// Terminal viewport row count emitted after native measurement.
+    pub rows: Option<f64>,
+
+    /// Terminal viewport column count emitted after native measurement.
+    pub cols: Option<f64>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -139,6 +153,10 @@ impl Default for EventPayload {
             start_index: None,
             end_index: None,
             ratio: None,
+            layout: None,
+            data_base64: None,
+            rows: None,
+            cols: None,
             modifiers: None,
         }
     }

@@ -28,6 +28,20 @@ pub struct RetainedElement {
     pub subtree_revision: u64,
     /// Stable locator id from the React `testId` prop.
     pub test_id: Option<String>,
+    /// Native semantic metadata. These fields are intentionally retained with
+    /// the real renderer tree so automation and production share one source.
+    pub accessibility: AccessibilitySemantics,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AccessibilitySemantics {
+    pub role: Option<String>,
+    pub name: Option<String>,
+    pub value: Option<String>,
+    pub disabled: Option<bool>,
+    pub expanded: Option<bool>,
+    pub selected: Option<bool>,
+    pub checked: Option<bool>,
 }
 
 impl RetainedElement {
@@ -43,6 +57,7 @@ impl RetainedElement {
             auto_focus: false,
             subtree_revision: revision,
             test_id: None,
+            accessibility: AccessibilitySemantics::default(),
             custom_props: HashMap::new(),
         }
     }
@@ -217,7 +232,52 @@ impl RetainedTree {
                 element.test_id = value.as_str().map(str::to_string);
                 return;
             }
-            if value.is_null() {
+            let handled_semantics = match key.as_str() {
+                "accessibilityRole" => {
+                    let next = value.as_str().map(str::to_string);
+                    changed = element.accessibility.role != next;
+                    element.accessibility.role = next;
+                    true
+                }
+                "accessibilityName" => {
+                    let next = value.as_str().map(str::to_string);
+                    changed = element.accessibility.name != next;
+                    element.accessibility.name = next;
+                    true
+                }
+                "accessibilityValue" => {
+                    let next = value.as_str().map(str::to_string);
+                    changed = element.accessibility.value != next;
+                    element.accessibility.value = next;
+                    true
+                }
+                "accessibilityDisabled" => {
+                    let next = value.as_bool();
+                    changed = element.accessibility.disabled != next;
+                    element.accessibility.disabled = next;
+                    true
+                }
+                "accessibilityExpanded" => {
+                    let next = value.as_bool();
+                    changed = element.accessibility.expanded != next;
+                    element.accessibility.expanded = next;
+                    true
+                }
+                "accessibilitySelected" => {
+                    let next = value.as_bool();
+                    changed = element.accessibility.selected != next;
+                    element.accessibility.selected = next;
+                    true
+                }
+                "accessibilityChecked" => {
+                    let next = value.as_bool();
+                    changed = element.accessibility.checked != next;
+                    element.accessibility.checked = next;
+                    true
+                }
+                _ => false,
+            };
+            if !handled_semantics && value.is_null() {
                 changed = element.custom_props.remove(&key).is_some();
             } else {
                 if element.custom_props.get(&key) != Some(&value) {
@@ -294,6 +354,46 @@ fn element_to_json(
         );
     }
 
+    let semantics = &element.accessibility;
+    if semantics.role.is_some()
+        || semantics.name.is_some()
+        || semantics.value.is_some()
+        || semantics.disabled.is_some()
+        || semantics.expanded.is_some()
+        || semantics.selected.is_some()
+        || semantics.checked.is_some()
+    {
+        let mut semantic = serde_json::Map::new();
+        if let Some(value) = &semantics.role {
+            semantic.insert("role".to_string(), serde_json::Value::String(value.clone()));
+        }
+        if let Some(value) = &semantics.name {
+            semantic.insert("name".to_string(), serde_json::Value::String(value.clone()));
+        }
+        if let Some(value) = &semantics.value {
+            semantic.insert(
+                "value".to_string(),
+                serde_json::Value::String(value.clone()),
+            );
+        }
+        if let Some(value) = semantics.disabled {
+            semantic.insert("disabled".to_string(), serde_json::Value::Bool(value));
+        }
+        if let Some(value) = semantics.expanded {
+            semantic.insert("expanded".to_string(), serde_json::Value::Bool(value));
+        }
+        if let Some(value) = semantics.selected {
+            semantic.insert("selected".to_string(), serde_json::Value::Bool(value));
+        }
+        if let Some(value) = semantics.checked {
+            semantic.insert("checked".to_string(), serde_json::Value::Bool(value));
+        }
+        obj.insert(
+            "accessibility".to_string(),
+            serde_json::Value::Object(semantic),
+        );
+    }
+
     if let Some(rect) = bounds.get(&id) {
         obj.insert(
             "bounds".to_string(),
@@ -329,9 +429,15 @@ fn element_to_json(
         }
 
         if !element.custom_props.is_empty() {
+            let secure = element
+                .custom_props
+                .get("secure")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
             let custom: serde_json::Map<String, serde_json::Value> = element
                 .custom_props
                 .iter()
+                .filter(|(key, _)| !(secure && key.as_str() == "value"))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
             obj.insert("customProps".to_string(), serde_json::Value::Object(custom));
@@ -351,4 +457,36 @@ fn element_to_json(
     }
 
     serde_json::Value::Object(obj)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automation_uses_the_real_retained_semantics() {
+        let mut tree = RetainedTree::new();
+        tree.create_element(1, "dock-workspace".to_string());
+        tree.root_id = Some(1);
+        tree.set_custom_prop(
+            1,
+            "accessibilityRole".to_string(),
+            serde_json::json!("group"),
+        );
+        tree.set_custom_prop(
+            1,
+            "accessibilityName".to_string(),
+            serde_json::json!("Workbench"),
+        );
+        tree.set_custom_prop(
+            1,
+            "accessibilityExpanded".to_string(),
+            serde_json::json!(true),
+        );
+
+        assert_eq!(
+            tree.to_automation_json(&HashMap::new())["accessibility"],
+            serde_json::json!({ "role": "group", "name": "Workbench", "expanded": true })
+        );
+    }
 }

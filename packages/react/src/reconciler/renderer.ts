@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
-import { GpuixRenderer } from "@gpuix/native"
-import type { EventPayload, WindowOptions } from "@gpuix/native"
+import { GpuixRenderer } from "@regenrek/gpuix-native"
+import type { EventPayload, WindowOptions } from "@regenrek/gpuix-native"
 import { createRoot, flushSync, type Root } from "./reconciler.js"
 import type { DebugFrameOverlayMode, NativeRenderer } from "../types/host.js"
 import { handleGpuixEvent } from "./event-registry.js"
@@ -17,7 +17,7 @@ export { createRoot, flushSync, reconciler } from "./reconciler.js"
 export type { Root } from "./reconciler.js"
 
 export function createRenderer(
-  onEvent?: (event: import("@gpuix/native").EventPayload) => void
+  onEvent?: (event: import("@regenrek/gpuix-native").EventPayload) => void
 ): GpuixRenderer {
   const renderer = new GpuixRenderer((err, event) => {
     if (err) {
