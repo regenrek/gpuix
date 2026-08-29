@@ -201,8 +201,6 @@ jobs:
         shell: bash
 
       - name: Publish native platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         working-directory: packages/native
         shell: bash
         run: |
@@ -219,8 +217,6 @@ jobs:
           done
 
       - name: Publish @regenrek/gpuix-native
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           CURRENT_VERSION=$(node -p "require('./packages/native/package.json').version")
           if npm view "@regenrek/gpuix-native@${CURRENT_VERSION}" version 2>/dev/null; then
@@ -236,8 +232,6 @@ jobs:
         working-directory: packages/react
 
       - name: Publish @regenrek/gpuix-react
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           CURRENT_VERSION=$(node -p "require('./packages/react/package.json').version")
           if npm view "@regenrek/gpuix-react@${CURRENT_VERSION}" version 2>/dev/null; then
