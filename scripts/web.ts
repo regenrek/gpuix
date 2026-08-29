@@ -10,6 +10,7 @@ const NATIVE = path.join(ROOT, "packages", "native")
 const EXAMPLE_OUTPUT = path.join(ROOT, "examples", "web-dist")
 const PACKAGE_OUTPUT = path.join(NATIVE, "wasm")
 const WASM = path.join(NATIVE, "target", "wasm32-unknown-unknown", "release", "gpuix_native.wasm")
+const WEB_RUST_TOOLCHAIN = "nightly-2026-08-28"
 
 function run({ command, args, cwd }: { command: string; args: string[]; cwd: string }): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -26,7 +27,15 @@ async function main() {
   console.log("web: building gpuix-native for wasm32-unknown-unknown")
   await run({
     command: "cargo",
-    args: ["+nightly", "build", "--target", "wasm32-unknown-unknown", "--no-default-features", "--release", "--lib"],
+    args: [
+      `+${WEB_RUST_TOOLCHAIN}`,
+      "build",
+      "--target",
+      "wasm32-unknown-unknown",
+      "--no-default-features",
+      "--release",
+      "--lib",
+    ],
     cwd: NATIVE,
   })
 

@@ -59,17 +59,19 @@ jobs:
       run:
         working-directory: packages/native
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.0
 
       # Reads the channel from rust-toolchain.toml, which must match zed's
       # pin for the gpui revision in packages/native/Cargo.toml.
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           target: ${{ matrix.settings.target }}
           # this workflow caches cargo explicitly in the next step
@@ -84,17 +86,6 @@ jobs:
       - name: Install Metal toolchain
         if: contains(matrix.settings.target, 'apple-darwin')
         run: xcodebuild -downloadComponent MetalToolchain
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/native/target/
-          key: ${{ matrix.settings.target }}-cargo-${{ hashFiles('packages/native/Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.settings.target }}-cargo-
 
       # Linux system deps for GPUI (Vulkan, Wayland, X11, fonts)
       # Based on longbridge/gpui-component and Zed's script/linux
@@ -115,14 +106,14 @@ jobs:
 
       - name: Install dependencies
         working-directory: .
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build native
         run: ${{ matrix.settings.build }}
         shell: bash
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bindings-${{ matrix.settings.target }}
           path: packages/native/${{ env.APP_NAME }}.*.node
@@ -144,7 +135,7 @@ jobs:
         run: bun compile-chat.ts
 
       - name: Upload example artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: example-chat-${{ matrix.settings.target }}
           path: examples/dist/example-chat-${{ matrix.settings.target }}*
@@ -155,16 +146,18 @@ jobs:
     needs: build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.0
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Download macOS arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bindings-aarch64-apple-darwin
           path: packages/native/
@@ -186,18 +179,20 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.0
 
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
       - name: Download Windows x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bindings-x86_64-pc-windows-msvc
           path: packages/native/
@@ -220,28 +215,25 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Verify npm authentication
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.0
 
       - name: Install browser Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-08-28
           target: wasm32-unknown-unknown
           components: rust-src
           cache: false
@@ -251,19 +243,23 @@ jobs:
         run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
+
+      - name: Build browser package
+        run: bun run build:web
+        working-directory: packages/native
 
       - name: Download native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: bindings-*
           path: packages/native/artifacts
 
       - name: Create npm dirs and move artifacts
         run: |
-          bunx @napi-rs/cli create-npm-dirs
-          bunx @napi-rs/cli artifacts
-          bunx @napi-rs/cli pre-publish --skip-optional-publish
+          bunx --no-install @napi-rs/cli create-npm-dirs
+          bunx --no-install @napi-rs/cli artifacts
+          bunx --no-install @napi-rs/cli pre-publish --skip-optional-publish
         working-directory: packages/native
 
       - name: List packages
@@ -284,7 +280,7 @@ jobs:
               echo "${PACKAGE_NAME}@${PACKAGE_VERSION} already published, skipping"
             else
               echo "Publishing ${PACKAGE_NAME}@${PACKAGE_VERSION}"
-              (cd "$PACKAGE_DIR" && npm publish --access public --provenance --tag regenrek)
+              (cd "$PACKAGE_DIR" && npm publish --ignore-scripts --access public --provenance --tag regenrek)
             fi
           done
 
@@ -298,7 +294,7 @@ jobs:
           else
             echo "Publishing @regenrek/gpuix-native@${CURRENT_VERSION}"
             cd packages/native
-            npm publish --access public --provenance --tag regenrek
+            npm publish --ignore-scripts --access public --provenance --tag regenrek
           fi
 
       - name: Build @regenrek/gpuix-react
@@ -322,7 +318,7 @@ jobs:
               pkg.dependencies['@regenrek/gpuix-native'] = native
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
             "
-            npm publish --access public --provenance --tag regenrek
+            npm publish --ignore-scripts --access public --provenance --tag regenrek
           fi
 
       - name: Create GitHub Release
@@ -344,7 +340,7 @@ jobs:
 
       - name: Download example artifacts
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: example-chat-*
           path: example-artifacts

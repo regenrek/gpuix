@@ -9,11 +9,11 @@ pub(crate) mod macos;
 #[cfg(all(feature = "test-support", target_os = "macos"))]
 mod test;
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::collections::{HashMap, HashSet};
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi::bindgen_prelude::{Buffer, Error, Result};
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
 
@@ -64,7 +64,6 @@ pub struct AppshotSelection {
 /// Renderer-local ownership for opaque appshot handles and shortcut tokens.
 /// Values are intentionally opaque: no native source identity is ever copied
 /// into a string that can reach JS, a fixture, a log, or persistence.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) struct AppshotState {
     next_handle: u64,
     pub(crate) next_shortcut: u64,

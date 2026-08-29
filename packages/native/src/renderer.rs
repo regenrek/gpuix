@@ -22,7 +22,6 @@ use gpui::AppContext as _;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi::bindgen_prelude::*;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use napi_derive::napi;
@@ -37,6 +36,7 @@ use std::time::Duration;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use wasm_bindgen::JsCast as _;
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use crate::appshot::{self, AppshotPermission, AppshotSelection, AppshotState};
 use crate::custom_elements::{CustomElementRegistry, CustomRenderContext};
 use crate::element_tree::EventPayload;
@@ -397,6 +397,7 @@ where
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type PromptForDirectoryTask = NativeCallbackTask<Option<String>>;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
@@ -2835,6 +2836,7 @@ impl WebGpuixRenderer {
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 impl Drop for GpuixRenderer {
     fn drop(&mut self) {
         self.appshot.lock().unwrap().dispose_all();

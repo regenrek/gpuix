@@ -72,19 +72,19 @@
   },
   "dependencies": {
     "@regenrek/gpuix-native": "workspace:^",
-    "eventsource-parser": "^4.1.0",
-    "react-reconciler": "^0.31.0",
-    "zod": "^4.4.3"
+    "eventsource-parser": "4.1.0",
+    "react-reconciler": "0.31.0",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3.2",
-    "@types/node": "^25.3.3",
-    "@types/react": "^19.2.0",
-    "@types/react-reconciler": "^0.28.0",
-    "typescript": "^5.3.0",
-    "vitest": "^4.0.18"
+    "@testing-library/react": "16.3.2",
+    "@types/node": "25.3.3",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.28.9",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
   }
 }
