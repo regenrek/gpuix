@@ -88,4 +88,20 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn disposing_test_only_state_needs_no_native_resources() {
+        let mut state = AppshotState::default();
+        state.set_test_selection(true);
+        let handle = state
+            .select_test_window()
+            .handle
+            .expect("selected test handle");
+        let shortcut = state.register_shortcut("cmd+shift+9".into()).unwrap();
+
+        state.dispose_all();
+
+        assert!(state.capture_test_handle(&handle).is_err());
+        assert!(state.unregister_shortcut(&shortcut).is_err());
+    }
 }

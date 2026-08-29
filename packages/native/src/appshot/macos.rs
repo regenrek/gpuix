@@ -39,7 +39,8 @@ extern "C" {
 
 #[link(name = "System")]
 extern "C" {
-    fn dispatch_get_main_queue() -> *mut c_void;
+    #[link_name = "_dispatch_main_q"]
+    static DISPATCH_MAIN_QUEUE: c_void;
     fn dispatch_async_f(queue: *mut c_void, context: *mut c_void, work: extern "C" fn(*mut c_void));
 }
 
@@ -57,7 +58,7 @@ fn on_renderer_main(callback: impl FnOnce() + Send + 'static) {
     unsafe {
         let callback: Box<Box<dyn FnOnce() + Send>> = Box::new(Box::new(callback));
         dispatch_async_f(
-            dispatch_get_main_queue(),
+            std::ptr::addr_of!(DISPATCH_MAIN_QUEUE).cast_mut(),
             Box::into_raw(callback).cast(),
             run_on_renderer_main,
         );

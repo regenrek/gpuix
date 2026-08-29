@@ -213,8 +213,11 @@ impl AppshotState {
     pub(crate) fn dispose_all(&mut self) {
         #[cfg(target_os = "macos")]
         {
-            let filters = self.filters.drain().map(|(_, filter)| filter).collect();
-            macos::dispose_appshot_resources(filters, self.take_picker_observers());
+            let filters: Vec<usize> = self.filters.drain().map(|(_, filter)| filter).collect();
+            let observers = self.take_picker_observers();
+            if !filters.is_empty() || !observers.is_empty() {
+                macos::dispose_appshot_resources(filters, observers);
+            }
         }
         self.handles.clear();
         #[cfg(target_os = "macos")]
