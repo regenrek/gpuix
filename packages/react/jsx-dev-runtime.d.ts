@@ -2,6 +2,7 @@
 
 import type {
   AnchoredProps,
+  BrowserSurfaceProps,
   CanvasProps,
   CodeProps,
   DiffProps,
@@ -39,6 +40,7 @@ export namespace JSX {
     diff: DiffProps
     markdown: MarkdownProps
     terminal: TerminalProps
+    "browser-surface": BrowserSurfaceProps
     "virtual-list": VirtualListProps
   }
 }

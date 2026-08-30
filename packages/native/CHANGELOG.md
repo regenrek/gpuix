@@ -1,5 +1,11 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.5
+
+### Patch Changes
+
+- Export the browser-surface event types and JSX intrinsic contract from the React package.
+
 ## 0.5.0-regenrek.4
 
 ### Minor Changes
