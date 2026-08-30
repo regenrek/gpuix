@@ -868,9 +868,7 @@ impl TestGpuixRenderer {
                 .capture_screenshot(window)
                 .map_err(|e| Error::from_reason(format!("Screenshot capture failed: {}", e)))?;
 
-            // Save as PNG (format inferred from file extension).
-            image
-                .save(&path)
+            crate::test_screenshot::write_png(&path, &image)
                 .map_err(|e| Error::from_reason(format!("Failed to save screenshot: {}", e)))?;
 
             Ok(())

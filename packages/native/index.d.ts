@@ -540,6 +540,22 @@ export interface EventPayload {
   rows?: number
   /** Terminal viewport column count emitted after native measurement. */
   cols?: number
+  /** Current URL reported by a native BrowserSurface navigation or loading event. */
+  browserUrl?: string
+  /** Whether the native BrowserSurface is currently loading. */
+  browserIsLoading?: boolean
+  /** Whether the native BrowserSurface can navigate backward. */
+  browserCanGoBack?: boolean
+  /** Whether the native BrowserSurface can navigate forward. */
+  browserCanGoForward?: boolean
+  /** Immutable BrowserSurface profile identity. */
+  browserProfileId?: string
+  /** Platform-generated identifier for an observed download. */
+  browserDownloadId?: string
+  /** Suggested filename reported by WebKit for an observed download. */
+  browserSuggestedFilename?: string
+  /** Caller-generated request identity for an explicit browser-data clear. */
+  browserRequestId?: string
   modifiers?: EventModifiers
 }
 

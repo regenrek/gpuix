@@ -194,6 +194,19 @@ jobs:
           bunx --no-install napi create-npm-dirs
           bunx --no-install napi artifacts
           bunx --no-install napi pre-publish --skip-optional-publish --no-gh-release
+          cp ../../THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
+          for PACKAGE_DIR in npm/*; do
+            test -d "$PACKAGE_DIR" || continue
+            cp LICENSE "$PACKAGE_DIR/LICENSE"
+            cp ../../THIRD_PARTY_NOTICES.md "$PACKAGE_DIR/THIRD_PARTY_NOTICES.md"
+            PACKAGE_JSON="$PACKAGE_DIR/package.json" node <<'NODE'
+          const fs = require('fs')
+          const path = process.env.PACKAGE_JSON
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'))
+          pkg.files = [...new Set([...(pkg.files ?? []), 'LICENSE', 'THIRD_PARTY_NOTICES.md'])]
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+          done
         working-directory: packages/native
 
       - name: List packages
@@ -290,4 +303,4 @@ jobs:
             exit 0
           fi
           echo "Uploading example-chat binaries to ${TAG}"
-          gh release upload "$TAG" "${files[@]}" --clobber
+          gh release upload "$TAG" LICENSE THIRD_PARTY_NOTICES.md "${files[@]}" --clobber

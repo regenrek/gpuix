@@ -17,6 +17,8 @@ mod theme;
 
 #[cfg(all(feature = "test-support", target_os = "macos"))]
 mod test_renderer;
+#[cfg(all(feature = "test-support", target_os = "macos"))]
+mod test_screenshot;
 
 pub use appshot::*;
 pub use element_tree::*;

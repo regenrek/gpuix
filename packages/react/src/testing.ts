@@ -641,10 +641,15 @@ export function createTestRoot(): TestRoot {
     renderer.flush()
   }
 
+  const unmount = (): void => {
+    root.unmount()
+    renderer.flush()
+  }
+
   return {
     root,
     renderer,
     render,
-    unmount: root.unmount,
+    unmount,
   }
 }

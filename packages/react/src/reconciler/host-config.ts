@@ -70,6 +70,10 @@ const EVENT_PROPS = [
   ["onLayoutChange", "layoutChange"],
   ["onTerminalInput", "terminalInput"],
   ["onTerminalResize", "terminalResize"],
+  ["onBrowserNavigation", "browserNavigation"],
+  ["onBrowserLoading", "browserLoading"],
+  ["onBrowserDownload", "browserDownload"],
+  ["onBrowserDataCleared", "browserDataCleared"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
   // Mouse events

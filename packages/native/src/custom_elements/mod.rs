@@ -15,6 +15,8 @@ use std::collections::{HashMap, HashSet};
 use crate::renderer::EventCallback;
 
 pub mod anchored;
+#[cfg(target_os = "macos")]
+pub mod browser_surface;
 pub mod canvas;
 pub mod code;
 pub mod diff;
@@ -207,6 +209,8 @@ impl CustomElementRegistry {
         registry.register(Box::new(input::InputFactory));
         registry.register(Box::new(input::TextareaFactory));
         registry.register(Box::new(anchored::AnchoredFactory));
+        #[cfg(target_os = "macos")]
+        registry.register(Box::new(browser_surface::BrowserSurfaceFactory));
         registry.register(Box::new(canvas::CanvasFactory));
         registry.register(Box::new(img::ImgFactory));
         registry.register(Box::new(img::SvgFactory));

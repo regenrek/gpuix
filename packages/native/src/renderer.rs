@@ -2262,8 +2262,7 @@ impl GpuixRenderer {
                 window.render_to_image()
             })?
             .map_err(|e| Error::from_reason(format!("Screenshot capture failed: {}", e)))?;
-            image
-                .save(&path)
+            crate::test_screenshot::write_png(&path, &image)
                 .map_err(|e| Error::from_reason(format!("Failed to save screenshot: {}", e)))?;
             Ok(())
         }

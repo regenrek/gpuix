@@ -1,5 +1,10 @@
 import type { EventPayload } from "@regenrek/gpuix-native"
-import type { Container, EventHandlerMap, NativeRenderer } from "../types/host.js"
+import type {
+  Container,
+  EventHandlerMap,
+  NativeRenderer,
+  RegisteredEventHandler,
+} from "../types/host.js"
 import { runtimeState } from "./runtime-state.js"
 
 export function attachRoot(renderer: NativeRenderer, container: Container): void {
@@ -27,7 +32,7 @@ export function registerEventHandler(
   eventHandlers: EventHandlerMap,
   elementId: number,
   eventType: string,
-  handler: (event: EventPayload) => void
+  handler: RegisteredEventHandler
 ): void {
   let elementHandlers = eventHandlers.get(elementId)
   if (!elementHandlers) {

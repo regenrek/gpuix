@@ -209,12 +209,17 @@ impl RetainedTree {
     }
 
     pub fn set_event_listener(&mut self, id: u64, event_type: String, has_handler: bool) {
-        if let Some(element) = self.elements.get_mut(&id) {
+        let changed = if let Some(element) = self.elements.get_mut(&id) {
             if has_handler {
-                element.events.insert(event_type);
+                element.events.insert(event_type)
             } else {
-                element.events.remove(&event_type);
+                element.events.remove(&event_type)
             }
+        } else {
+            false
+        };
+        if changed {
+            self.mark_changed(id);
         }
     }
 

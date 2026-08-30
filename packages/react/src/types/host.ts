@@ -156,6 +156,7 @@ export type ElementType =
   | "split-view"
   | "dock-workspace"
   | "terminal"
+  | "browser-surface"
 
 // ── Theme ────────────────────────────────────────────────────────────
 
@@ -309,6 +310,10 @@ export interface Props {
   onTerminalInput?: (event: EventPayload) => void
   /** Native viewport measurement in `event.rows` and `event.cols`. */
   onTerminalResize?: (event: EventPayload) => void
+  onBrowserNavigation?: (event: BrowserNavigationEvent) => void
+  onBrowserLoading?: (event: BrowserLoadingEvent) => void
+  onBrowserDownload?: (event: BrowserDownloadEvent) => void
+  onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
 
   /** Native accessibility semantics, persisted on Rust's real retained tree. */
   accessibilityRole?: string
@@ -360,6 +365,58 @@ export interface TerminalProps extends Props {
   theme?: GpuixTheme
   onTerminalInput?: (event: EventPayload) => void
   onTerminalResize?: (event: EventPayload) => void
+}
+
+export interface BrowserNavigationEvent extends EventPayload {
+  eventType: "browserNavigation"
+  browserUrl: string
+  browserCanGoBack: boolean
+  browserCanGoForward: boolean
+  browserProfileId: string
+}
+
+export interface BrowserLoadingEvent extends EventPayload {
+  eventType: "browserLoading"
+  browserUrl: string
+  browserIsLoading: boolean
+  browserCanGoBack: boolean
+  browserCanGoForward: boolean
+  browserProfileId: string
+}
+
+export interface BrowserDownloadEvent extends EventPayload {
+  eventType: "browserDownload"
+  browserDownloadId: string
+  browserSuggestedFilename: string
+  browserProfileId: string
+}
+
+export interface BrowserDataClearedEvent extends EventPayload {
+  eventType: "browserDataCleared"
+  browserProfileId: string
+  browserRequestId: string
+}
+
+/** A native, compositor-hosted browser pane. Navigation policy remains host-owned. */
+export interface BrowserSurfaceProps extends Props {
+  /** Stable UUID selecting one isolated public WKWebsiteDataStore. */
+  profileId: string
+  url?: string
+  visible?: boolean
+  /** Requests native browser focus once; it is not a layout or frame-sync signal. */
+  focus?: boolean
+  /** A new non-empty id requests one native back navigation. */
+  backRequestId?: string
+  /** A new non-empty id requests one native forward navigation. */
+  forwardRequestId?: string
+  /** A new non-empty id requests one native reload. */
+  reloadRequestId?: string
+  /** A new non-empty id requests clearing this profile's browser data. */
+  clearDataRequestId?: string
+  onBrowserNavigation?: (event: BrowserNavigationEvent) => void
+  onBrowserLoading?: (event: BrowserLoadingEvent) => void
+  onBrowserDownload?: (event: BrowserDownloadEvent) => void
+  onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
 }
 
 /** A variable-height list that builds only rows near its viewport. */
@@ -542,10 +599,14 @@ export interface DebugFrameOverlayStats {
   samples: number
 }
 
-export type EventHandlerMap = Map<
-  number,
-  Map<string, (event: EventPayload) => void>
->
+// Native dispatch selects a handler by its event type before invoking it.
+// Bivariance lets that registry retain callbacks with a narrower, typed payload
+// while preserving one runtime event path.
+export type RegisteredEventHandler = {
+  bivarianceHack(event: EventPayload): void
+}["bivarianceHack"]
+
+export type EventHandlerMap = Map<number, Map<string, RegisteredEventHandler>>
 
 export interface ElementIdAllocator {
   nextElementId: number

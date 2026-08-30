@@ -124,6 +124,24 @@ pub struct EventPayload {
     /// Terminal viewport column count emitted after native measurement.
     pub cols: Option<f64>,
 
+    // ── Browser surface observations ────────────────────────────────
+    /// Current URL reported by a native BrowserSurface navigation or loading event.
+    pub browser_url: Option<String>,
+    /// Whether the native BrowserSurface is currently loading.
+    pub browser_is_loading: Option<bool>,
+    /// Whether the native BrowserSurface can navigate backward.
+    pub browser_can_go_back: Option<bool>,
+    /// Whether the native BrowserSurface can navigate forward.
+    pub browser_can_go_forward: Option<bool>,
+    /// Immutable BrowserSurface profile identity.
+    pub browser_profile_id: Option<String>,
+    /// Platform-generated identifier for an observed download.
+    pub browser_download_id: Option<String>,
+    /// Suggested filename reported by WebKit for an observed download.
+    pub browser_suggested_filename: Option<String>,
+    /// Caller-generated request identity for an explicit browser-data clear.
+    pub browser_request_id: Option<String>,
+
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
 }
@@ -157,6 +175,14 @@ impl Default for EventPayload {
             data_base64: None,
             rows: None,
             cols: None,
+            browser_url: None,
+            browser_is_loading: None,
+            browser_can_go_back: None,
+            browser_can_go_forward: None,
+            browser_profile_id: None,
+            browser_download_id: None,
+            browser_suggested_filename: None,
+            browser_request_id: None,
             modifiers: None,
         }
     }

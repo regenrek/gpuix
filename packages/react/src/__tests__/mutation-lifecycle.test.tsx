@@ -52,6 +52,32 @@ describeNative("mutation lifecycle", () => {
     }
   })
 
+  it("materializes raw div click listener membership changes after mount", () => {
+    const { render, renderer, unmount } = createTestRoot()
+    const onClick = vi.fn()
+    const style = { width: 100, height: 100 }
+
+    try {
+      render(<div style={style}>click</div>)
+      renderer.nativeSimulateClick(10, 10)
+      expect(onClick).not.toHaveBeenCalled()
+
+      render(
+        <div style={style} onClick={onClick}>
+          click
+        </div>
+      )
+      renderer.nativeSimulateClick(10, 10)
+      expect(onClick).toHaveBeenCalledTimes(1)
+
+      render(<div style={style}>click</div>)
+      renderer.nativeSimulateClick(10, 10)
+      expect(onClick).toHaveBeenCalledTimes(1)
+    } finally {
+      unmount()
+    }
+  })
+
   it("keeps element ids and click handlers isolated across live roots", () => {
     const a = createTestRoot()
     const b = createTestRoot()

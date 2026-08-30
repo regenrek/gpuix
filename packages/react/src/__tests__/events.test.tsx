@@ -103,6 +103,60 @@ describeNative("events", () => {
     testRoot = createTestRoot()
   })
 
+  describe("browser surface events", () => {
+    it("registers its typed browser callbacks in the canonical event registry", () => {
+      try {
+        testRoot.render(
+          React.createElement("browser-surface", {
+            profileId: "",
+            onBrowserNavigation: () => {},
+            onBrowserLoading: () => {},
+            onBrowserDownload: () => {},
+            onBrowserDataCleared: () => {},
+            style: { width: 200, height: 100 },
+          }),
+        )
+
+        const surface = testRoot.renderer.findByType("browser-surface")[0]
+        expect(surface?.events).toEqual(
+          new Set([
+            "browserNavigation",
+            "browserLoading",
+            "browserDownload",
+            "browserDataCleared",
+          ]),
+        )
+      } finally {
+        testRoot.unmount()
+      }
+    })
+
+    it("flushes retained-element teardown through the test-root lifecycle", () => {
+      const renderer = testRoot.renderer
+      const flush = renderer.flush.bind(renderer)
+      let flushCount = 0
+      renderer.flush = () => {
+        flushCount += 1
+        flush()
+      }
+
+      let unmounted = false
+      try {
+        testRoot.render(<div style={{ width: 200, height: 100 }} />)
+        const flushCountBeforeUnmount = flushCount
+
+        testRoot.unmount()
+        unmounted = true
+
+        expect(flushCount).toBe(flushCountBeforeUnmount + 1)
+      } finally {
+        if (!unmounted) {
+          testRoot.unmount()
+        }
+      }
+    })
+  })
+
   describe("click events", () => {
     it("should handle onClick and trigger re-render", () => {
       function Counter() {
