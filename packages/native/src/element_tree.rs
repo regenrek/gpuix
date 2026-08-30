@@ -141,6 +141,12 @@ pub struct EventPayload {
     pub browser_suggested_filename: Option<String>,
     /// Caller-generated request identity for an explicit browser-data clear.
     pub browser_request_id: Option<String>,
+    /// Browser action category requiring one matching host decision.
+    pub browser_action_kind: Option<String>,
+    /// Host navigation intent category when browser_action_kind is navigationIntent.
+    pub browser_navigation_intent: Option<String>,
+    /// Whether a requested WebKit navigation targets the main frame.
+    pub browser_is_main_frame: Option<bool>,
 
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
@@ -183,6 +189,9 @@ impl Default for EventPayload {
             browser_download_id: None,
             browser_suggested_filename: None,
             browser_request_id: None,
+            browser_action_kind: None,
+            browser_navigation_intent: None,
+            browser_is_main_frame: None,
             modifiers: None,
         }
     }

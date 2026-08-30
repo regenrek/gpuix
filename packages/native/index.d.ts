@@ -556,6 +556,12 @@ export interface EventPayload {
   browserSuggestedFilename?: string
   /** Caller-generated request identity for an explicit browser-data clear. */
   browserRequestId?: string
+  /** Browser action category requiring one matching host decision. */
+  browserActionKind?: string
+  /** Host navigation intent category when browser_action_kind is navigationIntent. */
+  browserNavigationIntent?: string
+  /** Whether a requested WebKit navigation targets the main frame. */
+  browserIsMainFrame?: boolean
   modifiers?: EventModifiers
 }
 

@@ -312,7 +312,7 @@ export interface Props {
   onTerminalResize?: (event: EventPayload) => void
   onBrowserNavigation?: (event: BrowserNavigationEvent) => void
   onBrowserLoading?: (event: BrowserLoadingEvent) => void
-  onBrowserDownload?: (event: BrowserDownloadEvent) => void
+  onBrowserActionRequested?: (event: BrowserActionRequestedEvent) => void
   onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
 
   /** Native accessibility semantics, persisted on Rust's real retained tree. */
@@ -384,11 +384,35 @@ export interface BrowserLoadingEvent extends EventPayload {
   browserProfileId: string
 }
 
-export interface BrowserDownloadEvent extends EventPayload {
-  eventType: "browserDownload"
-  browserDownloadId: string
-  browserSuggestedFilename: string
+export type BrowserNavigationIntentKind = "navigate" | "back" | "forward" | "reload"
+export type BrowserActionKind =
+  | "navigationIntent"
+  | "navigationAction"
+  | "navigationResponse"
+  | "downloadDestination"
+
+export interface BrowserNavigationIntent {
+  requestId: string
+  kind: BrowserNavigationIntentKind
+  /** Required only when kind is navigate. */
+  url?: string
+}
+
+export type BrowserActionDecision =
+  | { requestId: string; decision: "allow" | "cancel" | "download" }
+  | { requestId: string; decision: "save"; destinationUrl: string }
+
+/** A native browser action that remains pending until this exact id is resolved. */
+export interface BrowserActionRequestedEvent extends EventPayload {
+  eventType: "browserActionRequested"
+  browserRequestId: string
+  browserActionKind: BrowserActionKind
   browserProfileId: string
+  browserNavigationIntent?: BrowserNavigationIntentKind
+  browserUrl?: string
+  browserIsMainFrame?: boolean
+  browserDownloadId?: string
+  browserSuggestedFilename?: string
 }
 
 export interface BrowserDataClearedEvent extends EventPayload {
@@ -401,21 +425,18 @@ export interface BrowserDataClearedEvent extends EventPayload {
 export interface BrowserSurfaceProps extends Props {
   /** Stable UUID selecting one isolated public WKWebsiteDataStore. */
   profileId: string
-  url?: string
   visible?: boolean
   /** Requests native browser focus once; it is not a layout or frame-sync signal. */
   focus?: boolean
-  /** A new non-empty id requests one native back navigation. */
-  backRequestId?: string
-  /** A new non-empty id requests one native forward navigation. */
-  forwardRequestId?: string
-  /** A new non-empty id requests one native reload. */
-  reloadRequestId?: string
+  /** A new non-empty id creates one host-decided navigation intent. */
+  navigationIntent?: BrowserNavigationIntent
+  /** Resolves exactly one matching pending browser action. */
+  actionDecision?: BrowserActionDecision
   /** A new non-empty id requests clearing this profile's browser data. */
   clearDataRequestId?: string
   onBrowserNavigation?: (event: BrowserNavigationEvent) => void
   onBrowserLoading?: (event: BrowserLoadingEvent) => void
-  onBrowserDownload?: (event: BrowserDownloadEvent) => void
+  onBrowserActionRequested?: (event: BrowserActionRequestedEvent) => void
   onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
 }
 

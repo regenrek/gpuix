@@ -1,5 +1,16 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.4
+
+### Minor Changes
+
+- Add explicit host decisions for browser navigation and downloads.
+
+### Patch Changes
+
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.4
+
 ## 0.5.0-regenrek.3
 
 ### Minor Changes

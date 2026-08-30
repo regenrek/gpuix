@@ -4,11 +4,14 @@
 //! effective ancestor clip during GPUI prepaint, then updates the native surface
 //! directly without a JavaScript geometry callback, polling loop, or fallback.
 
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use gpui::{
-    px, BrowserSurfaceEvent, BrowserSurfaceObserver, NativeSurfaceGeometry, PlatformBrowserSurface,
+    px, Bounds, BrowserActionDecision, BrowserActionRequest, BrowserActionResolution,
+    BrowserNavigationIntent, BrowserSurfaceEvent, BrowserSurfaceObserver, NativeSurfaceGeometry,
+    Pixels, PlatformBrowserSurface,
 };
+use serde::Deserialize;
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
 
@@ -25,18 +28,15 @@ impl CustomElementFactory for BrowserSurfaceFactory {
 }
 
 struct BrowserSurfaceElement {
-    url: String,
     profile_id: String,
     visible: bool,
     focus: bool,
-    loaded_url: String,
     did_focus: bool,
-    back_request_id: String,
-    applied_back_request_id: String,
-    forward_request_id: String,
-    applied_forward_request_id: String,
-    reload_request_id: String,
-    applied_reload_request_id: String,
+    navigation_intent: Option<NavigationIntentProp>,
+    applied_navigation_intent_id: String,
+    pending_navigation_intents: HashMap<String, BrowserNavigationIntent>,
+    action_decision: Option<BrowserActionDecisionProp>,
+    applied_action_decision_id: String,
     clear_data_request_id: String,
     applied_clear_data_request_id: String,
     surface_profile_id: String,
@@ -46,18 +46,15 @@ struct BrowserSurfaceElement {
 impl Default for BrowserSurfaceElement {
     fn default() -> Self {
         Self {
-            url: String::new(),
             profile_id: String::new(),
             visible: true,
             focus: false,
-            loaded_url: String::new(),
             did_focus: false,
-            back_request_id: String::new(),
-            applied_back_request_id: String::new(),
-            forward_request_id: String::new(),
-            applied_forward_request_id: String::new(),
-            reload_request_id: String::new(),
-            applied_reload_request_id: String::new(),
+            navigation_intent: None,
+            applied_navigation_intent_id: String::new(),
+            pending_navigation_intents: HashMap::new(),
+            action_decision: None,
+            applied_action_decision_id: String::new(),
             clear_data_request_id: String::new(),
             applied_clear_data_request_id: String::new(),
             surface_profile_id: String::new(),
@@ -93,37 +90,83 @@ impl BrowserSurfaceElement {
             surface.destroy();
         }
         self.surface_profile_id.clear();
-        self.loaded_url.clear();
         self.did_focus = false;
+        self.pending_navigation_intents.clear();
         if !preserve_applied_requests {
-            self.applied_back_request_id.clear();
-            self.applied_forward_request_id.clear();
-            self.applied_reload_request_id.clear();
+            self.applied_navigation_intent_id.clear();
+            self.applied_action_decision_id.clear();
             self.applied_clear_data_request_id.clear();
         }
     }
 
-    fn apply_explicit_requests(&mut self, surface: &dyn PlatformBrowserSurface) {
-        if !self.back_request_id.is_empty() && self.back_request_id != self.applied_back_request_id
-        {
-            surface.go_back();
-            self.applied_back_request_id
-                .clone_from(&self.back_request_id);
+    fn request_navigation_intent(&mut self, event_callback: &Option<crate::renderer::EventCallback>, element_id: u64) {
+        let Some(intent) = self.navigation_intent.as_ref() else {
+            return;
+        };
+        if intent.request_id.is_empty() || intent.request_id == self.applied_navigation_intent_id {
+            return;
         }
-        if !self.forward_request_id.is_empty()
-            && self.forward_request_id != self.applied_forward_request_id
-        {
-            surface.go_forward();
-            self.applied_forward_request_id
-                .clone_from(&self.forward_request_id);
+        let request_id = intent.request_id.clone();
+        let Some(intent) = intent.into_navigation_intent() else {
+            return;
+        };
+        self.pending_navigation_intents.insert(request_id.clone(), intent.clone());
+        emit_browser_event(
+            event_callback,
+            element_id,
+            BrowserSurfaceEvent::ActionRequested(BrowserActionRequest::NavigationIntent {
+                request_id: request_id.clone(),
+                intent,
+                profile_id: self.profile_id.clone(),
+            }),
+        );
+        self.applied_navigation_intent_id = request_id;
+    }
+
+    fn apply_action_decision(&mut self, surface: &dyn PlatformBrowserSurface) {
+        let Some(decision) = self.action_decision.as_ref() else {
+            return;
+        };
+        if decision.request_id.is_empty() || decision.request_id == self.applied_action_decision_id {
+            return;
         }
-        if !self.reload_request_id.is_empty()
-            && self.reload_request_id != self.applied_reload_request_id
-        {
-            surface.reload();
-            self.applied_reload_request_id
-                .clone_from(&self.reload_request_id);
+        let Some(resolution) = decision.into_resolution() else {
+            return;
+        };
+        let accepted = if let Some(intent) = self.pending_navigation_intents.get(&resolution.request_id).cloned() {
+            match resolution.decision {
+                BrowserActionDecision::Allow => {
+                    self.pending_navigation_intents.remove(&resolution.request_id);
+                    match intent {
+                        BrowserNavigationIntent::Navigate { url } => surface.load_url(&url),
+                        BrowserNavigationIntent::Back => surface.go_back(),
+                        BrowserNavigationIntent::Forward => surface.go_forward(),
+                        BrowserNavigationIntent::Reload => surface.reload(),
+                    }
+                    true
+                }
+                BrowserActionDecision::Cancel => {
+                    self.pending_navigation_intents.remove(&resolution.request_id);
+                    true
+                }
+                BrowserActionDecision::Download | BrowserActionDecision::Save { .. } => false,
+            }
+        } else {
+            surface.resolve_action(resolution)
+        };
+        if accepted {
+            self.applied_action_decision_id.clone_from(&decision.request_id);
         }
+    }
+
+    fn apply_explicit_requests(
+        &mut self,
+        surface: &dyn PlatformBrowserSurface,
+        event_callback: &Option<crate::renderer::EventCallback>,
+        element_id: u64,
+    ) {
+        self.request_navigation_intent(event_callback, element_id);
+        self.apply_action_decision(surface);
         if !self.clear_data_request_id.is_empty()
             && self.clear_data_request_id != self.applied_clear_data_request_id
         {
@@ -132,6 +175,65 @@ impl BrowserSurfaceElement {
                 .clone_from(&self.clear_data_request_id);
         }
     }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NavigationIntentProp {
+    request_id: String,
+    kind: String,
+    url: Option<String>,
+}
+
+impl NavigationIntentProp {
+    fn into_navigation_intent(&self) -> Option<BrowserNavigationIntent> {
+        match self.kind.as_str() {
+            "navigate" => self.url.as_ref().filter(|url| !url.trim().is_empty()).map(|url| {
+                BrowserNavigationIntent::Navigate { url: url.clone() }
+            }),
+            "back" => Some(BrowserNavigationIntent::Back),
+            "forward" => Some(BrowserNavigationIntent::Forward),
+            "reload" => Some(BrowserNavigationIntent::Reload),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserActionDecisionProp {
+    request_id: String,
+    decision: String,
+    destination_url: Option<String>,
+}
+
+impl BrowserActionDecisionProp {
+    fn into_resolution(&self) -> Option<BrowserActionResolution> {
+        let decision = match self.decision.as_str() {
+            "allow" => BrowserActionDecision::Allow,
+            "cancel" => BrowserActionDecision::Cancel,
+            "download" => BrowserActionDecision::Download,
+            "save" => self
+                .destination_url
+                .as_ref()
+                .filter(|url| !url.trim().is_empty())
+                .map(|url| BrowserActionDecision::Save {
+                    destination_url: url.clone(),
+                })?,
+            _ => return None,
+        };
+        Some(BrowserActionResolution {
+            request_id: self.request_id.clone(),
+            decision,
+        })
+    }
+}
+
+fn effective_browser_clip(
+    bounds: Bounds<Pixels>,
+    cumulative_content_mask: Bounds<Pixels>,
+) -> Bounds<Pixels> {
+    bounds.intersect(&cumulative_content_mask)
 }
 
 impl CustomElement for BrowserSurfaceElement {
@@ -145,23 +247,20 @@ impl CustomElement for BrowserSurfaceElement {
 
         let event_callback = ctx.event_callback.clone();
         let element_id = ctx.id;
+        let observer_callback = event_callback.clone();
         let observer: BrowserSurfaceObserver = Rc::new(move |event| {
-            emit_browser_event(&event_callback, element_id, event);
+            emit_browser_event(&observer_callback, element_id, event);
         });
         let Some(surface) = self.ensure_surface(window, Some(observer)) else {
             return gpui::Empty.into_any_element();
         };
-        if self.loaded_url != self.url {
-            surface.set_url(&self.url);
-            self.loaded_url.clone_from(&self.url);
-        }
         if self.focus && !self.did_focus {
             surface.focus();
             self.did_focus = true;
         } else if !self.focus {
             self.did_focus = false;
         }
-        self.apply_explicit_requests(surface.as_ref());
+        self.apply_explicit_requests(surface.as_ref(), &event_callback, element_id);
 
         let visible = self.visible;
         let corner_radius = ctx
@@ -172,7 +271,7 @@ impl CustomElement for BrowserSurfaceElement {
         let geometry_surface = surface.clone();
         let geometry_probe = gpui::canvas(
             move |bounds, window, _cx| {
-                let clip = bounds.intersect(&window.content_mask().bounds);
+                let clip = effective_browser_clip(bounds, window.content_mask().bounds);
                 geometry_surface.set_geometry(NativeSurfaceGeometry {
                     bounds,
                     clip,
@@ -200,19 +299,11 @@ impl CustomElement for BrowserSurfaceElement {
 
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
-            "url" => self.url = value.as_str().unwrap_or_default().to_string(),
             "profileId" => self.profile_id = value.as_str().unwrap_or_default().to_string(),
             "visible" => self.visible = value.as_bool().unwrap_or(true),
             "focus" => self.focus = value.as_bool().unwrap_or(false),
-            "backRequestId" => {
-                self.back_request_id = value.as_str().unwrap_or_default().to_string()
-            }
-            "forwardRequestId" => {
-                self.forward_request_id = value.as_str().unwrap_or_default().to_string()
-            }
-            "reloadRequestId" => {
-                self.reload_request_id = value.as_str().unwrap_or_default().to_string()
-            }
+            "navigationIntent" => self.navigation_intent = serde_json::from_value(value).ok(),
+            "actionDecision" => self.action_decision = serde_json::from_value(value).ok(),
             "clearDataRequestId" => {
                 self.clear_data_request_id = value.as_str().unwrap_or_default().to_string()
             }
@@ -222,13 +313,11 @@ impl CustomElement for BrowserSurfaceElement {
 
     fn supported_props(&self) -> &'static [&'static str] {
         &[
-            "url",
             "profileId",
             "visible",
             "focus",
-            "backRequestId",
-            "forwardRequestId",
-            "reloadRequestId",
+            "navigationIntent",
+            "actionDecision",
             "clearDataRequestId",
         ]
     }
@@ -237,7 +326,7 @@ impl CustomElement for BrowserSurfaceElement {
         &[
             "browserNavigation",
             "browserLoading",
-            "browserDownload",
+            "browserActionRequested",
             "browserDataCleared",
         ]
     }
@@ -255,6 +344,41 @@ fn emit_browser_event(
     crate::renderer::emit_event_full(callback, element_id, event.event_type(), |payload| {
         payload.browser_profile_id = Some(event.profile_id().to_string());
         match event {
+            BrowserSurfaceEvent::ActionRequested(request) => {
+                payload.browser_request_id = Some(request.request_id().to_string());
+                payload.browser_action_kind = Some(request.kind().to_string());
+                match request {
+                    BrowserActionRequest::NavigationIntent { intent, .. } => {
+                        payload.browser_navigation_intent = Some(match intent {
+                            BrowserNavigationIntent::Navigate { url } => {
+                                payload.browser_url = Some(url);
+                                "navigate"
+                            }
+                            BrowserNavigationIntent::Back => "back",
+                            BrowserNavigationIntent::Forward => "forward",
+                            BrowserNavigationIntent::Reload => "reload",
+                        }
+                        .to_string());
+                    }
+                    BrowserActionRequest::NavigationAction {
+                        url, is_main_frame, ..
+                    } => {
+                        payload.browser_url = Some(url);
+                        payload.browser_is_main_frame = Some(is_main_frame);
+                    }
+                    BrowserActionRequest::NavigationResponse { url, .. } => {
+                        payload.browser_url = Some(url);
+                    }
+                    BrowserActionRequest::DownloadDestination {
+                        download_id,
+                        suggested_filename,
+                        ..
+                    } => {
+                        payload.browser_download_id = Some(download_id);
+                        payload.browser_suggested_filename = Some(suggested_filename);
+                    }
+                }
+            }
             BrowserSurfaceEvent::Navigation {
                 url,
                 can_go_back,
@@ -277,17 +401,47 @@ fn emit_browser_event(
                 payload.browser_can_go_back = Some(can_go_back);
                 payload.browser_can_go_forward = Some(can_go_forward);
             }
-            BrowserSurfaceEvent::Download {
-                download_id,
-                suggested_filename,
-                ..
-            } => {
-                payload.browser_download_id = Some(download_id);
-                payload.browser_suggested_filename = Some(suggested_filename);
-            }
             BrowserSurfaceEvent::DataCleared { request_id, .. } => {
                 payload.browser_request_id = Some(request_id);
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{point, size};
+
+    #[test]
+    fn effective_clip_intersects_the_prepaint_bounds_with_the_cumulative_mask() {
+        let bounds = Bounds::new(point(px(20.), px(30.)), size(px(200.), px(120.)));
+        let cumulative_mask = Bounds::new(point(px(50.), px(10.)), size(px(90.), px(80.)));
+
+        assert_eq!(
+            effective_browser_clip(bounds, cumulative_mask),
+            Bounds::new(point(px(50.), px(30.)), size(px(90.), px(60.))),
+        );
+    }
+
+    #[test]
+    fn profile_recreation_discards_pending_navigation_intents_but_preserves_consumed_ids() {
+        let mut element = BrowserSurfaceElement {
+            profile_id: "profile-b".into(),
+            surface_profile_id: "profile-a".into(),
+            applied_navigation_intent_id: "request-a".into(),
+            pending_navigation_intents: HashMap::from([(
+                "request-a".into(),
+                BrowserNavigationIntent::Navigate {
+                    url: "https://example.com".into(),
+                },
+            )]),
+            ..Default::default()
+        };
+
+        element.destroy_surface(true);
+
+        assert!(element.pending_navigation_intents.is_empty());
+        assert_eq!(element.applied_navigation_intent_id, "request-a");
+    }
 }

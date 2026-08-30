@@ -1,5 +1,11 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.4
+
+### Minor Changes
+
+- Add explicit host decisions for browser navigation and downloads.
+
 ## 0.5.0-regenrek.3
 
 ### Minor Changes

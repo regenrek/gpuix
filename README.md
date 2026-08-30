@@ -19,7 +19,7 @@ cd examples && bun --hot chat.tsx
 Pin the prerelease so the React loader and the native packages stay on the same build:
 
 ```bash
-bun add @regenrek/gpuix-react@0.5.0-regenrek.3 react@19.2.4
+bun add @regenrek/gpuix-react@0.5.0-regenrek.4 react@19.2.4
 ```
 
 Set the JSX runtime in `tsconfig.json`:

@@ -72,7 +72,7 @@ const EVENT_PROPS = [
   ["onTerminalResize", "terminalResize"],
   ["onBrowserNavigation", "browserNavigation"],
   ["onBrowserLoading", "browserLoading"],
-  ["onBrowserDownload", "browserDownload"],
+  ["onBrowserActionRequested", "browserActionRequested"],
   ["onBrowserDataCleared", "browserDataCleared"],
   ["onChange", "change"],
   ["onSubmit", "submit"],

@@ -111,7 +111,7 @@ describeNative("events", () => {
             profileId: "",
             onBrowserNavigation: () => {},
             onBrowserLoading: () => {},
-            onBrowserDownload: () => {},
+            onBrowserActionRequested: () => {},
             onBrowserDataCleared: () => {},
             style: { width: 200, height: 100 },
           }),
@@ -122,7 +122,7 @@ describeNative("events", () => {
           new Set([
             "browserNavigation",
             "browserLoading",
-            "browserDownload",
+            "browserActionRequested",
             "browserDataCleared",
           ]),
         )
