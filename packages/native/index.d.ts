@@ -562,6 +562,10 @@ export interface EventPayload {
   browserNavigationIntent?: string
   /** Whether a requested WebKit navigation targets the main frame. */
   browserIsMainFrame?: boolean
+  /** Whether WebKit classifies a navigation action as a download. */
+  browserShouldPerformDownload?: boolean
+  /** Whether WebKit can render a navigation response in the browser surface. */
+  browserCanShowMimeType?: boolean
   modifiers?: EventModifiers
 }
 

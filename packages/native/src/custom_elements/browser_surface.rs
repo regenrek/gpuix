@@ -361,13 +361,22 @@ fn emit_browser_event(
                         .to_string());
                     }
                     BrowserActionRequest::NavigationAction {
-                        url, is_main_frame, ..
+                        url,
+                        is_main_frame,
+                        should_perform_download,
+                        ..
                     } => {
                         payload.browser_url = Some(url);
                         payload.browser_is_main_frame = Some(is_main_frame);
+                        payload.browser_should_perform_download = Some(should_perform_download);
                     }
-                    BrowserActionRequest::NavigationResponse { url, .. } => {
+                    BrowserActionRequest::NavigationResponse {
+                        url,
+                        can_show_mime_type,
+                        ..
+                    } => {
                         payload.browser_url = Some(url);
+                        payload.browser_can_show_mime_type = Some(can_show_mime_type);
                     }
                     BrowserActionRequest::DownloadDestination {
                         download_id,
@@ -412,6 +421,7 @@ fn emit_browser_event(
 mod tests {
     use super::*;
     use gpui::{point, size};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn effective_clip_intersects_the_prepaint_bounds_with_the_cumulative_mask() {
@@ -443,5 +453,42 @@ mod tests {
 
         assert!(element.pending_navigation_intents.is_empty());
         assert_eq!(element.applied_navigation_intent_id, "request-a");
+    }
+
+    #[test]
+    fn action_events_preserve_webkit_download_facts() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let callback: crate::renderer::EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+
+        emit_browser_event(
+            &Some(callback.clone()),
+            7,
+            BrowserSurfaceEvent::ActionRequested(BrowserActionRequest::NavigationAction {
+                request_id: "action".into(),
+                url: "https://example.com/file".into(),
+                is_main_frame: true,
+                should_perform_download: true,
+                profile_id: "profile".into(),
+            }),
+        );
+        emit_browser_event(
+            &Some(callback),
+            7,
+            BrowserSurfaceEvent::ActionRequested(BrowserActionRequest::NavigationResponse {
+                request_id: "response".into(),
+                url: "https://example.com/file".into(),
+                can_show_mime_type: false,
+                profile_id: "profile".into(),
+            }),
+        );
+
+        let events = events.lock().unwrap();
+        assert_eq!(events[0].browser_should_perform_download, Some(true));
+        assert_eq!(events[0].browser_can_show_mime_type, None);
+        assert_eq!(events[1].browser_should_perform_download, None);
+        assert_eq!(events[1].browser_can_show_mime_type, Some(false));
     }
 }

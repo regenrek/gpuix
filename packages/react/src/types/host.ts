@@ -411,6 +411,8 @@ export interface BrowserActionRequestedEvent extends EventPayload {
   browserNavigationIntent?: BrowserNavigationIntentKind
   browserUrl?: string
   browserIsMainFrame?: boolean
+  browserShouldPerformDownload?: boolean
+  browserCanShowMimeType?: boolean
   browserDownloadId?: string
   browserSuggestedFilename?: string
 }

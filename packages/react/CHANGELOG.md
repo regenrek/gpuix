@@ -1,5 +1,13 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.6
+
+### Patch Changes
+
+- Report WebKit's download intent and MIME-display capability in browser action requests so the embedding host can choose whether a navigation becomes a download.
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.6
+
 ## 0.5.0-regenrek.5
 
 ### Patch Changes

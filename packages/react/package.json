@@ -1,6 +1,6 @@
 {
   "name": "@regenrek/gpuix-react",
-  "version": "0.5.0-regenrek.5",
+  "version": "0.5.0-regenrek.6",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",

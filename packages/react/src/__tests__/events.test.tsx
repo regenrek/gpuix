@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach } from "vitest"
 import React, { useState, useRef } from "react"
 import { createTestRoot, hasNativeTestRenderer } from "../testing"
 import { startFrameLoop } from "../reconciler/renderer.js"
+import type { BrowserActionRequestedEvent } from "../types/host.js"
 import type { EventPayload } from "@regenrek/gpuix-native"
 import { expectScreenshotsDiffer } from "./test-utils"
 
@@ -104,6 +105,16 @@ describeNative("events", () => {
   })
 
   describe("browser surface events", () => {
+    it("keeps WebKit download facts on the typed action event", () => {
+      const event = {
+        browserShouldPerformDownload: true,
+        browserCanShowMimeType: false,
+      } as BrowserActionRequestedEvent
+
+      expect(event.browserShouldPerformDownload).toBe(true)
+      expect(event.browserCanShowMimeType).toBe(false)
+    })
+
     it("registers its typed browser callbacks in the canonical event registry", () => {
       try {
         testRoot.render(

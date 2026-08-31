@@ -147,6 +147,10 @@ pub struct EventPayload {
     pub browser_navigation_intent: Option<String>,
     /// Whether a requested WebKit navigation targets the main frame.
     pub browser_is_main_frame: Option<bool>,
+    /// Whether WebKit classifies a navigation action as a download.
+    pub browser_should_perform_download: Option<bool>,
+    /// Whether WebKit can render a navigation response in the browser surface.
+    pub browser_can_show_mime_type: Option<bool>,
 
     // ── Modifiers ────────────────────────────────────────────────────
     pub modifiers: Option<EventModifiers>,
@@ -192,6 +196,8 @@ impl Default for EventPayload {
             browser_action_kind: None,
             browser_navigation_intent: None,
             browser_is_main_frame: None,
+            browser_should_perform_download: None,
+            browser_can_show_mime_type: None,
             modifiers: None,
         }
     }

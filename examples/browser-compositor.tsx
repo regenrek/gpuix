@@ -9,7 +9,7 @@ const BROWSER_A_PROFILE = "1bf766d4-9632-4292-b2d4-6d7058cd78af"
 const BROWSER_B_PROFILE = "a4eb96bc-1f22-471a-b9f8-bc7c2f7633a2"
 
 const page = (label: string) =>
-  `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><title>${label}</title><style>html,body{background:#f8fbff;color:#182235}body{font:16px -apple-system;padding:24px}input{display:block;margin-top:16px;padding:10px;width:80%;background:#fff;color:#182235;border:1px solid #6e7d96}</style></head><body><h1>${label}</h1><p>Native WKWebView inside GPUIX.</p><input value="select and copy me"></body></html>`)}`
+  `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><title>${label}</title><style>html,body{background:#f8fbff;color:#182235}body{font:16px -apple-system;padding:24px}input,a{display:block;margin-top:16px;padding:10px;width:80%;background:#fff;color:#182235;border:1px solid #6e7d96}</style></head><body><h1>${label}</h1><p>Native WKWebView inside GPUIX.</p><input value="select and copy me"><a href="data:text/plain,gpuix-download-proof" download="gpuix-browser-compositor-proof.txt">Download proof</a></body></html>`)}`
 
 type BrowserProps = {
   label: string
@@ -60,6 +60,11 @@ function App() {
         decision: "save",
         destinationUrl: "file:///tmp/gpuix-browser-compositor-proof.txt",
       })
+    } else if (
+      event.browserShouldPerformDownload === true ||
+      (event.browserActionKind === "navigationResponse" && event.browserCanShowMimeType === false)
+    ) {
+      setDecision({ requestId: event.browserRequestId, decision: "download" })
     } else if (event.browserUrl?.includes("blocked")) {
       setDecision({ requestId: event.browserRequestId, decision: "cancel" })
     } else {
