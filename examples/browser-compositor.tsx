@@ -14,7 +14,6 @@ const page = (label: string) =>
 type BrowserProps = {
   label: string
   profileId: string
-  visible?: boolean
   navigationIntent?: BrowserNavigationIntent
   actionDecision?: BrowserActionDecision
   clearDataRequestId?: string
@@ -22,10 +21,10 @@ type BrowserProps = {
   onActionRequested?: (event: BrowserActionRequestedEvent) => void
 }
 
-function Browser({ label, profileId, visible = true, navigationIntent, actionDecision, clearDataRequestId, onEvent, onActionRequested }: BrowserProps) {
+function Browser({ label, profileId, navigationIntent, actionDecision, clearDataRequestId, onEvent, onActionRequested }: BrowserProps) {
   return createElement("browser-surface", {
     profileId,
-    visible,
+    testId: label === "Browser A" ? "browser-a" : "browser-b",
     navigationIntent,
     actionDecision,
     clearDataRequestId,
@@ -75,7 +74,7 @@ function App() {
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", backgroundColor: "#0b1020", color: "#e8eefc", padding: 12, gap: 8 }}>
       <div style={{ display: "flex", gap: 8, height: 38 }}>
         <div style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setMenu(!menu)}>Toggle GPUI menu</div>
-        <div style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setShowSecond(!showSecond)}>Hide/show Browser B</div>
+        <div testId="browser-b-toggle" style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setShowSecond((show) => !show)}>{showSecond ? "Remove Browser B" : "Recreate Browser B"}</div>
         <div style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setBrowserAIntent({ requestId: `allow-${Date.now()}`, kind: "navigate", url: page("Browser A") })}>Allow A navigation</div>
         <div style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setBrowserAIntent({ requestId: `cancel-${Date.now()}`, kind: "navigate", url: "https://blocked.invalid" })}>Cancel A navigation</div>
         <div style={{ padding: 9, backgroundColor: "#263b70", borderRadius: 8, cursor: "pointer" }} onClick={() => setBrowserAIntent({ requestId: `reload-${Date.now()}`, kind: "reload" })}>Reload A</div>
@@ -100,7 +99,13 @@ function App() {
       <SplitView direction="horizontal" defaultRatio={0.5} minSize={220} minSecondSize={220} style={{ flexGrow: 1, minHeight: 0 }}>
         <Browser label="Browser A" profileId={BROWSER_A_PROFILE} navigationIntent={browserAIntent} actionDecision={browserADecision} clearDataRequestId={String(clearA)} onEvent={record} onActionRequested={decide(setBrowserADecision)} />
         <SplitView direction="vertical" defaultRatio={0.55} minSize={160} minSecondSize={160}>
-          <Browser label="Browser B" profileId={BROWSER_B_PROFILE} visible={showSecond} navigationIntent={browserBIntent} actionDecision={browserBDecision} onEvent={record} onActionRequested={decide(setBrowserBDecision)} />
+          {showSecond ? (
+            <Browser label="Browser B" profileId={BROWSER_B_PROFILE} navigationIntent={browserBIntent} actionDecision={browserBDecision} onEvent={record} onActionRequested={decide(setBrowserBDecision)} />
+          ) : (
+            <div testId="browser-b-removed" style={{ display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#131c31", borderRadius: 12 }}>
+              Browser B removed
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: "#131c31", borderRadius: 12, padding: 12, gap: 6 }}>
             <div>GPUI base pane</div>
             {events.map((event) => <text key={event} style={{ fontSize: 12, color: "#aebfe8" }}>{event}</text>)}

@@ -53,6 +53,18 @@ function rendererFor(node: HostNode): NativeRenderer {
   return containerFor(node).renderer
 }
 
+/**
+ * Structural deletions are owned by React's mutation phase. `destroyElement`
+ * recursively removes the retained subtree, so the queued batch cannot leave
+ * a detached native child alive until React's later passive cleanup.
+ */
+function destroyRetainedSubtree(container: Container, id: number): void {
+  const destroyed = container.renderer.destroyElement(id)
+  for (const destroyedId of destroyed) {
+    unregisterEventHandlers(container.eventHandlers, destroyedId)
+  }
+}
+
 function nextId(container: Container): number {
   return ++container.ids.nextElementId
 }
@@ -279,7 +291,12 @@ export const hostConfig = {
   },
 
   removeChild(parent: Instance, child: Instance | TextInstance): void {
-    rendererFor(parent).removeChild(parent.id, child.id)
+    const container = containerFor(parent)
+    // Keep the surviving retained parent structurally correct before teardown.
+    // Both operations enter the same React mutation batch and therefore reach
+    // Rust in this order: unlink the child, then destroy its subtree.
+    container.renderer.removeChild(parent.id, child.id)
+    destroyRetainedSubtree(container, child.id)
   },
 
   insertBefore(
@@ -299,10 +316,7 @@ export const hostConfig = {
   ): void {},
 
   removeChildFromContainer(parent: Container, child: Instance): void {
-    const destroyed = parent.renderer.destroyElement(child.id)
-    for (const id of destroyed) {
-      unregisterEventHandlers(parent.eventHandlers, id)
-    }
+    destroyRetainedSubtree(parent, child.id)
   },
 
   prepareForCommit(_containerInfo: Container): Record<string, unknown> | null {
@@ -466,13 +480,9 @@ export const hostConfig = {
     return null
   },
 
-  detachDeletedInstance(instance: Instance): void {
-    const container = containerFor(instance)
-    const destroyed = container.renderer.destroyElement(instance.id)
-    for (const id of destroyed) {
-      unregisterEventHandlers(container.eventHandlers, id)
-    }
-  },
+  // React invokes this after resetAfterCommit. Native teardown has already
+  // been queued by removeChild/removeChildFromContainer and flushed there.
+  detachDeletedInstance(_instance: Instance): void {},
 
   getPublicInstance(instance: Instance): PublicInstance {
     return instance

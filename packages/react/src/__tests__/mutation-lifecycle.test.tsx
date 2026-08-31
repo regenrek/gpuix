@@ -78,6 +78,57 @@ describeNative("mutation lifecycle", () => {
     }
   })
 
+  it("unlinks then destroys a conditionally removed retained subtree in one mutation batch", () => {
+    const renderer = new TestRenderer()
+    const root = createRoot(renderer)
+    const onRemovedClick = vi.fn()
+    const tree = (showRemoved: boolean) => (
+      <div testId="shell">
+        <div testId="survivor">survivor</div>
+        {showRemoved && (
+          <div testId="removed" onClick={onRemovedClick}>
+            <div testId="removed-descendant">removed descendant</div>
+          </div>
+        )}
+      </div>
+    )
+
+    try {
+      flushSync(() => root.render(tree(true)))
+      renderer.flush()
+      const shellId = renderer.findByTestId("shell")?.id
+      const survivorId = renderer.findByTestId("survivor")?.id
+      const removedId = renderer.findByTestId("removed")?.id
+      const descendantId = renderer.findByTestId("removed-descendant")?.id
+      expect(shellId).toBeDefined()
+      expect(survivorId).toBeDefined()
+      expect(removedId).toBeDefined()
+      expect(descendantId).toBeDefined()
+
+      const applyBatch = vi.spyOn(renderer, "applyBatch")
+      flushSync(() => root.render(tree(false)))
+
+      expect(applyBatch).toHaveBeenCalledTimes(1)
+      const mutations = JSON.parse(applyBatch.mock.calls[0]![0]) as unknown[][]
+      const unlinkIndex = mutations.findIndex(
+        (mutation) => mutation[0] === "removeChild" && mutation[1] === shellId && mutation[2] === removedId
+      )
+      const destroyIndex = mutations.findIndex(
+        (mutation) => mutation[0] === "destroyElement" && mutation[1] === removedId
+      )
+      expect(unlinkIndex).toBeGreaterThanOrEqual(0)
+      expect(destroyIndex).toBe(unlinkIndex + 1)
+      expect(renderer.getElement(shellId!)?.children).toEqual([survivorId])
+      expect(renderer.getElement(removedId!)).toBeUndefined()
+      expect(renderer.getElement(descendantId!)).toBeUndefined()
+
+      handleGpuixEvent({ elementId: removedId!, eventType: "click" }, renderer)
+      expect(onRemovedClick).not.toHaveBeenCalled()
+    } finally {
+      root.unmount()
+    }
+  })
+
   it("keeps element ids and click handlers isolated across live roots", () => {
     const a = createTestRoot()
     const b = createTestRoot()
