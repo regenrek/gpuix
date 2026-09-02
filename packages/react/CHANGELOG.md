@@ -1,5 +1,12 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.11
+
+### Patch Changes
+
+- Await application cleanup before the last native window exits.
+- @regenrek/gpuix-native@0.5.0-regenrek.11
+
 ## 0.5.0-regenrek.10
 
 ### Patch Changes

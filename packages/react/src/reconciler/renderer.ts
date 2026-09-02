@@ -72,7 +72,8 @@ export interface FrameLoop {
  * 10ms frame would cap scroll at ~55fps on a 120Hz display.
  *
  * `tick()` returning false means the last window closed. The loop stops and
- * `onTerminated` runs. `render()` uses that to exit the process.
+ * awaits `onTerminated`. `render()` uses that handoff before exiting the
+ * process.
  */
 export function enableAutomation(renderer: LiveAutomationRenderer): void {
   serveAutomationStdio(new InProcessBackend(liveRendererAsTest(renderer)))
@@ -80,7 +81,7 @@ export function enableAutomation(renderer: LiveAutomationRenderer): void {
 
 export function startFrameLoop(
   renderer: Pick<GpuixRenderer, "requiresTick" | "tick">,
-  options: { frameMs?: number; onTerminated?: () => void } = {}
+  options: { frameMs?: number; onTerminated?: () => void | Promise<void> } = {}
 ): FrameLoop {
   if (!renderer.requiresTick()) {
     return { stop: () => {} }
@@ -96,19 +97,21 @@ export function startFrameLoop(
     timer = null
   }
 
-  const loop = (): void => {
+  const loop = async (): Promise<void> => {
     if (stopped) return
     const started = performance.now()
     const running = renderer.tick()
     if (running === false) {
       stop()
-      options.onTerminated?.()
+      await options.onTerminated?.()
       return
     }
     const wait = Math.max(0, frameMs - (performance.now() - started))
-    timer = setTimeout(loop, wait)
+    timer = setTimeout(() => {
+      void loop()
+    }, wait)
   }
-  loop()
+  void loop()
 
   return { stop }
 }
@@ -151,6 +154,8 @@ function renderSlot(): RenderSlot {
 
 export interface RenderOptions extends WindowOptions {
   onEvent?: (event: EventPayload) => void
+  /** Runs after the last native window closes and before GPUIX exits. */
+  onLastWindowClosed?: () => void | Promise<void>
   renderer?: NativeRenderer
   /** GPUI scene overlay. Does not go through React or layout. */
   debugFrameOverlay?: DebugFrameOverlayMode
@@ -168,7 +173,13 @@ export function resetRender(): void {
 
 /** Mount the app. Under `bun --hot`, later calls remount on the same native window. */
 export function render(node: ReactNode, options: RenderOptions = {}): Root {
-  const { onEvent, renderer: injected, debugFrameOverlay, ...windowOptions } = options
+  const {
+    onEvent,
+    onLastWindowClosed,
+    renderer: injected,
+    debugFrameOverlay,
+    ...windowOptions
+  } = options
   const slot = renderSlot()
   const remount = slot.root != null
   if (!slot.renderer) {
@@ -208,7 +219,8 @@ export function render(node: ReactNode, options: RenderOptions = {}): Root {
     const native = slot.renderer
     slot.loop?.stop()
     slot.loop = startFrameLoop(native, {
-      onTerminated: () => {
+      onTerminated: async () => {
+        await onLastWindowClosed?.()
         process.exit(0)
       },
     })

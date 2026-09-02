@@ -95,6 +95,32 @@ describe("frame loop", () => {
     expect(terminated).toBe(1)
     loop.stop()
   })
+
+  it("awaits termination before completing the last-window handoff", async () => {
+    let resolveTermination: (() => void) | undefined
+    let completed = false
+    const loop = startFrameLoop(
+      {
+        requiresTick: () => true,
+        tick: () => false,
+      },
+      {
+        onTerminated: async () => {
+          await new Promise<void>((resolve) => {
+            resolveTermination = resolve
+          })
+          completed = true
+        },
+      },
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(completed).toBe(false)
+    resolveTermination?.()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(completed).toBe(true)
+    loop.stop()
+  })
 })
 
 describeNative("events", () => {
