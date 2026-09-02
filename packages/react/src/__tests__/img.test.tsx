@@ -5,7 +5,7 @@ import fs from "fs"
 import { beforeEach, describe, expect, it } from "vitest"
 import React, { useState } from "react"
 import { createTestRoot, hasNativeTestRenderer, type TestRoot } from "../testing"
-import { bufferSimilarity, isCI } from "./test-utils"
+import { expectScreenshotsDiffer } from "./test-utils"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
 
@@ -133,12 +133,7 @@ describeNative("custom element: img", () => {
       expect(fs.statSync(path0).size).toBeGreaterThan(0)
       expect(fs.statSync(path1).size).toBeGreaterThan(0)
 
-      // Skipped on CI: Metal on macOS VMs doesn't repaint between captures.
-      if (!isCI) {
-        const before = fs.readFileSync(path0)
-        const after = fs.readFileSync(path1)
-        expect(bufferSimilarity(before, after)).toBeLessThan(0.99)
-      }
+      expectScreenshotsDiffer(path0, path1)
     })
   })
 })
@@ -186,10 +181,6 @@ describeNative("custom element: svg", () => {
 
     expect(fs.existsSync(beforePath)).toBe(true)
     expect(fs.existsSync(afterPath)).toBe(true)
-    if (!isCI) {
-      const before = fs.readFileSync(beforePath)
-      const after = fs.readFileSync(afterPath)
-      expect(bufferSimilarity(before, after)).toBeLessThan(0.99)
-    }
+    expectScreenshotsDiffer(beforePath, afterPath)
   })
 })

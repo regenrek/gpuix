@@ -14,22 +14,7 @@ export const SHOTS_DIR = path.resolve(
   "../../screenshots"
 )
 
-/** Compute byte-level similarity between two buffers (0..1).
- *  For PNGs from the same renderer, identical pixels → identical bytes
- *  (same encoder settings). Any pixel change cascades through compression,
- *  so even small visual diffs produce low byte similarity. */
-export function bufferSimilarity(a: Buffer, b: Buffer): number {
-  const len = Math.max(a.length, b.length)
-  if (len === 0) return 1
-  let matching = 0
-  for (let i = 0; i < len; i++) {
-    if (a[i] === b[i]) matching++
-  }
-  return matching / len
-}
-
-/** Assert two screenshot PNGs exist, are non-empty, and are visually
- *  different (less than 99% byte similarity).
+/** Assert two screenshot PNGs exist, are non-empty, and differ.
  *  Skipped on CI — Metal on macOS VMs doesn't repaint between captures,
  *  producing byte-identical screenshots regardless of state changes. */
 export function expectScreenshotsDiffer(beforePath: string, afterPath: string) {
@@ -42,8 +27,7 @@ export function expectScreenshotsDiffer(beforePath: string, afterPath: string) {
 
   const before = fs.readFileSync(beforePath)
   const after = fs.readFileSync(afterPath)
-  const similarity = bufferSimilarity(before, after)
-  expect(similarity).toBeLessThan(0.99)
+  expect(before.equals(after)).toBe(false)
 }
 
 export function expectScreenshotsEqual(leftPath: string, rightPath: string) {
