@@ -1,5 +1,6 @@
 import type {
   BrowserDataClearedEvent,
+  BrowserDownloadDestinationSelectedEvent,
   BrowserLoadingEvent,
   BrowserNavigationEvent,
   BrowserSurfaceProps,
@@ -31,6 +32,15 @@ const dataCleared: BrowserDataClearedEvent = {
   browserRequestId: "clear-1",
 }
 
+const destinationSelected: BrowserDownloadDestinationSelectedEvent = {
+  elementId: 1,
+  eventType: "browserDownloadDestinationSelected",
+  browserProfileId: "profile",
+  browserRequestId: "download-1",
+  browserDownloadId: "profile:1",
+  browserSelectedFileUrl: "file:///selected.txt",
+}
+
 const browserSurfaceProps: BrowserSurfaceProps = {
   profileId: "profile",
   onBrowserLoading: (event) => {
@@ -45,6 +55,10 @@ const browserSurfaceProps: BrowserSurfaceProps = {
       const typed: BrowserDataClearedEvent = event
       void typed.browserRequestId
   },
+  onBrowserDownloadDestinationSelected: (event) => {
+      const typed: BrowserDownloadDestinationSelectedEvent = event
+      void typed.browserSelectedFileUrl
+  },
 }
 
 export const browserPublicContract = <browser-surface {...browserSurfaceProps} />
@@ -52,3 +66,4 @@ export const browserPublicContract = <browser-surface {...browserSurfaceProps} /
 void loading
 void navigation
 void dataCleared
+void destinationSelected

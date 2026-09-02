@@ -1,5 +1,10 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.8
+
+- Expose opaque Appshot preview handles to native image elements.
+- Expose typed two-phase browser download destination events.
+
 ## 0.5.0-regenrek.6
 
 ### Patch Changes

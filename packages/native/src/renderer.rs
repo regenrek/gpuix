@@ -934,6 +934,26 @@ impl GpuixRenderer {
         self.appshot.lock().unwrap().dispose_handle(&handle);
     }
 
+    /// Create an opaque native preview token from a transient PNG capture.
+    /// Its bytes remain renderer-local and can only be painted by `<img>`.
+    #[napi(ts_return_type = "string")]
+    pub fn create_appshot_preview(&self, png: Buffer) -> Result<String> {
+        #[cfg(target_os = "macos")]
+        return self.appshot.lock().unwrap().create_preview(png);
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = png;
+            Err(appshot::unavailable())
+        }
+    }
+
+    /// Idempotently remove one renderer-lifetime Appshot preview.
+    #[napi]
+    pub fn dispose_appshot_preview(&self, handle: String) {
+        self.appshot.lock().unwrap().dispose_preview(&handle);
+    }
+
     /// Register a renderer-lifetime opaque global-shortcut token. Platform
     /// installation is intentionally owned by the native renderer, never by
     /// React state or the retained tree.
@@ -1160,6 +1180,7 @@ impl GpuixRenderer {
         let callback = self.event_callback_for_view();
 
         let selection = self.selection.clone();
+        let appshot = self.appshot.clone();
         let opened_window = Rc::new(RefCell::new(None));
         let startup_error = Rc::new(RefCell::new(None));
         let opened_window_for_app = opened_window.clone();
@@ -1181,7 +1202,13 @@ impl GpuixRenderer {
                 to_gpui_window_options(&window_options, bounds),
                 |_window, cx| {
                     cx.new(|_| {
-                        GpuixView::new(tree.clone(), callback.clone(), title, selection.clone())
+                        GpuixView::new(
+                            tree.clone(),
+                            callback.clone(),
+                            title,
+                            selection.clone(),
+                            appshot.clone(),
+                        )
                     })
                 },
             ) {
@@ -1244,6 +1271,7 @@ impl GpuixRenderer {
         let window_options = options.clone();
         let tree = self.tree.clone();
         let selection = self.selection.clone();
+        let appshot = self.appshot.clone();
         let callback = self.event_callback_for_view();
         let (command_sender, command_receiver) = mpsc::unbounded();
         let (startup_sender, startup_receiver) = sync_channel(1);
@@ -1264,7 +1292,9 @@ impl GpuixRenderer {
                         let window = match cx.open_window(
                             to_gpui_window_options(&window_options, bounds),
                             |_window, cx| {
-                                cx.new(|_| GpuixView::new(tree, callback, title, selection))
+                                cx.new(|_| {
+                                    GpuixView::new(tree, callback, title, selection, appshot)
+                                })
                             },
                         ) {
                             Ok(window) => window,
@@ -2932,6 +2962,9 @@ pub(crate) struct GpuixView {
     pub(crate) motion_states: HashMap<u64, crate::motion::MotionState>,
     /// Live text selection, shared with the paint closures and the napi methods.
     pub(crate) selection: SharedSelection,
+    /// Native-only Appshot preview registry shared with the napi owner.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    appshot: Arc<Mutex<AppshotState>>,
     /// Persistent measurement and scroll state for React-backed virtual lists.
     virtual_lists: HashMap<u64, VirtualListEntry>,
     /// Motion / review clock. Live wall time unless automation freezes it.
@@ -2944,6 +2977,9 @@ impl GpuixView {
         event_callback: Option<EventCallback>,
         window_title: String,
         selection: SharedSelection,
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))] appshot: Arc<
+            Mutex<AppshotState>,
+        >,
     ) -> Self {
         Self {
             tree,
@@ -2955,6 +2991,8 @@ impl GpuixView {
             scroll_handles: HashMap::new(),
             motion_states: HashMap::new(),
             selection,
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            appshot,
             virtual_lists: HashMap::new(),
             clock: crate::automation::AutomationClock::new(),
         }
@@ -3013,6 +3051,8 @@ impl GpuixView {
             now,
             motion_active: &mut motion_active,
             selection: self.selection.clone(),
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            appshot: &self.appshot,
             inherited,
         };
         let child = build_element(expected_child_id, &mut build_ctx, window, cx);
@@ -3116,6 +3156,8 @@ pub(crate) struct BuildCtx<'a> {
     pub now: web_time::Instant,
     pub motion_active: &'a mut bool,
     pub selection: SharedSelection,
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub appshot: &'a Arc<Mutex<AppshotState>>,
     /// Inherited text state, resolved the way CSS inherits it. The renderer's
     /// own theme only seeds the root selection wash; custom elements resolve
     /// their own theme from their `theme` prop.
@@ -3578,6 +3620,8 @@ impl gpui::Render for GpuixView {
                     now,
                     motion_active: &mut motion_active,
                     selection: self.selection.clone(),
+                    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+                    appshot: &self.appshot,
                     inherited: Inherited::root(&theme),
                 };
                 build_element(root_id, &mut ctx, window, cx)
@@ -3706,6 +3750,8 @@ pub(crate) fn build_element(
                 style,
                 children: Vec::new(),
                 selection: ctx.selection.clone(),
+                #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+                appshot: ctx.appshot,
                 selectable: inherited.selectable,
                 selection_wash: inherited.selection_wash,
                 now: ctx.now,
@@ -3732,6 +3778,8 @@ pub(crate) fn build_element(
                 style,
                 children: custom_children,
                 selection: ctx.selection.clone(),
+                #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+                appshot: ctx.appshot,
                 selectable: inherited.selectable,
                 selection_wash: inherited.selection_wash,
                 now: ctx.now,

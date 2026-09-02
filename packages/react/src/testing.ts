@@ -187,6 +187,18 @@ export class TestRenderer implements NativeRenderer {
     this.native.disposeAppshotWindow(handle)
   }
 
+  createAppshotPreview(
+    png: Parameters<NativeRenderer["createAppshotPreview"]>[0]
+  ): ReturnType<NativeRenderer["createAppshotPreview"]> {
+    return this.native.createAppshotPreview(png)
+  }
+
+  disposeAppshotPreview(
+    handle: Parameters<NativeRenderer["disposeAppshotPreview"]>[0]
+  ): ReturnType<NativeRenderer["disposeAppshotPreview"]> {
+    this.native.disposeAppshotPreview(handle)
+  }
+
   registerGlobalShortcut(
     shortcut: Parameters<NativeRenderer["registerGlobalShortcut"]>[0]
   ): ReturnType<NativeRenderer["registerGlobalShortcut"]> {

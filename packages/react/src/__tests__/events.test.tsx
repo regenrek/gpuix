@@ -124,6 +124,7 @@ describeNative("events", () => {
             onBrowserLoading: () => {},
             onBrowserActionRequested: () => {},
             onBrowserDataCleared: () => {},
+            onBrowserDownloadDestinationSelected: () => {},
             style: { width: 200, height: 100 },
           }),
         )
@@ -135,6 +136,7 @@ describeNative("events", () => {
             "browserLoading",
             "browserActionRequested",
             "browserDataCleared",
+            "browserDownloadDestinationSelected",
           ]),
         )
       } finally {

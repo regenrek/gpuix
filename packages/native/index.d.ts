@@ -34,6 +34,13 @@ export declare class GpuixRenderer {
    */
   disposeAppshotWindow(handle: string): void
   /**
+   * Create an opaque native preview token from a transient PNG capture.
+   * Its bytes remain renderer-local and can only be painted by `<img>`.
+   */
+  createAppshotPreview(png: Buffer): string
+  /** Idempotently remove one renderer-lifetime Appshot preview. */
+  disposeAppshotPreview(handle: string): void
+  /**
    * Register a renderer-lifetime opaque global-shortcut token. Platform
    * installation is intentionally owned by the native renderer, never by
    * React state or the retained tree.
@@ -183,6 +190,8 @@ export declare class TestGpuixRenderer {
   captureAppshotWindow(handle: string): Promise<Buffer>
   captureFrontmostAppshot(): Promise<Buffer>
   disposeAppshotWindow(handle: string): void
+  createAppshotPreview(png: Buffer): string
+  disposeAppshotPreview(handle: string): void
   registerGlobalShortcut(shortcut: string): string
   unregisterGlobalShortcut(token: string): void
   /**
@@ -554,6 +563,8 @@ export interface EventPayload {
   browserDownloadId?: string
   /** Suggested filename reported by WebKit for an observed download. */
   browserSuggestedFilename?: string
+  /** File URL selected by the native, app-window-bound save sheet. */
+  browserSelectedFileUrl?: string
   /** Caller-generated request identity for an explicit browser-data clear. */
   browserRequestId?: string
   /** Browser action category requiring one matching host decision. */

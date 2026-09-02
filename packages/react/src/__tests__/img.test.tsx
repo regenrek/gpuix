@@ -33,6 +33,17 @@ describeNative("custom element: img", () => {
   })
 
   describe("rendering", () => {
+    it("forwards opaque Appshot preview tokens", () => {
+      function App() {
+        return <img appshotPreviewHandle="appshot-preview-1" objectFit="contain" />
+      }
+
+      testRoot.render(<App />)
+      const image = testRoot.renderer.findByType("img")[0] as any
+      expect(image.customProps?.appshotPreviewHandle).toBe("appshot-preview-1")
+      expect(image.customProps?.src).toBeUndefined()
+    })
+
     it("should create img element and forward src/objectFit props", () => {
       function App() {
         return (

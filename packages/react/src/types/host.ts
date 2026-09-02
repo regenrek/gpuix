@@ -314,6 +314,7 @@ export interface Props {
   onBrowserLoading?: (event: BrowserLoadingEvent) => void
   onBrowserActionRequested?: (event: BrowserActionRequestedEvent) => void
   onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
+  onBrowserDownloadDestinationSelected?: (event: BrowserDownloadDestinationSelectedEvent) => void
 
   /** Native accessibility semantics, persisted on Rust's real retained tree. */
   accessibilityRole?: string
@@ -400,7 +401,7 @@ export interface BrowserNavigationIntent {
 
 export type BrowserActionDecision =
   | { requestId: string; decision: "allow" | "cancel" | "download" }
-  | { requestId: string; decision: "save"; destinationUrl: string }
+  | { requestId: string; decision: "selectDestination" | "save" }
 
 /** A native browser action that remains pending until this exact id is resolved. */
 export interface BrowserActionRequestedEvent extends EventPayload {
@@ -415,6 +416,15 @@ export interface BrowserActionRequestedEvent extends EventPayload {
   browserCanShowMimeType?: boolean
   browserDownloadId?: string
   browserSuggestedFilename?: string
+}
+
+/** A native save sheet selected a file URL for one exact pending download. */
+export interface BrowserDownloadDestinationSelectedEvent extends EventPayload {
+  eventType: "browserDownloadDestinationSelected"
+  browserRequestId: string
+  browserProfileId: string
+  browserDownloadId: string
+  browserSelectedFileUrl: string
 }
 
 export interface BrowserDataClearedEvent extends EventPayload {
@@ -440,6 +450,7 @@ export interface BrowserSurfaceProps extends Props {
   onBrowserLoading?: (event: BrowserLoadingEvent) => void
   onBrowserActionRequested?: (event: BrowserActionRequestedEvent) => void
   onBrowserDataCleared?: (event: BrowserDataClearedEvent) => void
+  onBrowserDownloadDestinationSelected?: (event: BrowserDownloadDestinationSelectedEvent) => void
 }
 
 /** A variable-height list that builds only rows near its viewport. */
@@ -461,6 +472,8 @@ export interface VirtualListProps {
 // Props for native <img> rendering.
 export interface ImgProps extends Props {
   src?: string
+  /** Opaque renderer-lifetime Appshot preview token; never a URL or image payload. */
+  appshotPreviewHandle?: string
   objectFit?: "fill" | "contain" | "cover" | "scaleDown" | "none"
   alt?: string
 }
@@ -554,6 +567,8 @@ type NativeAppshotRenderer = Pick<
   | "disposeAppshotWindow"
   | "registerGlobalShortcut"
   | "unregisterGlobalShortcut"
+  | "createAppshotPreview"
+  | "disposeAppshotPreview"
 >
 
 /// Interface for the renderer that receives mutations from the reconciler.

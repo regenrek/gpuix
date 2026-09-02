@@ -66,6 +66,7 @@ pub struct AppshotSelection {
 /// into a string that can reach JS, a fixture, a log, or persistence.
 pub(crate) struct AppshotState {
     next_handle: u64,
+    next_preview: u64,
     pub(crate) next_shortcut: u64,
     /// Native ScreenCaptureKit filters are renderer-local and are never
     /// converted to source metadata. The integer is an Objective-C retain
@@ -75,6 +76,9 @@ pub(crate) struct AppshotState {
     #[cfg(target_os = "macos")]
     picker_observers: HashSet<usize>,
     handles: HashSet<String>,
+    /// Decoded only from the transient capture Buffer and retained solely by
+    /// this renderer. Preview tokens cannot name or recover their source.
+    previews: HashMap<String, std::sync::Arc<gpui::Image>>,
     pub(crate) shortcuts: HashMap<String, String>,
     #[cfg(target_os = "macos")]
     pub(crate) shortcut_refs: HashMap<String, (u32, usize)>,
@@ -89,12 +93,14 @@ impl Default for AppshotState {
     fn default() -> Self {
         Self {
             next_handle: 1,
+            next_preview: 1,
             next_shortcut: 1,
             #[cfg(target_os = "macos")]
             filters: HashMap::new(),
             #[cfg(target_os = "macos")]
             picker_observers: HashSet::new(),
             handles: HashSet::new(),
+            previews: HashMap::new(),
             shortcuts: HashMap::new(),
             #[cfg(target_os = "macos")]
             shortcut_refs: HashMap::new(),
@@ -131,6 +137,33 @@ impl AppshotState {
         } else {
             Err(Error::from_reason("The appshot handle is unavailable"))
         }
+    }
+
+    /// Retain one native image for a renderer-lifetime preview. The incoming
+    /// PNG Buffer remains the caller's transient forwarding value; only the
+    /// opaque token can subsequently reach the retained React tree.
+    pub(crate) fn create_preview(&mut self, png: Buffer) -> Result<String> {
+        let bytes = png.to_vec();
+        if bytes.len() < 8 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+            return Err(unavailable());
+        }
+        let handle = format!("appshot-preview-{}", self.next_preview);
+        self.next_preview += 1;
+        self.previews.insert(
+            handle.clone(),
+            std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, bytes)),
+        );
+        Ok(handle)
+    }
+
+    pub(crate) fn preview_image(&self, handle: &str) -> Option<std::sync::Arc<gpui::Image>> {
+        self.previews.get(handle).cloned()
+    }
+
+    /// Explicit disposal is idempotent. Renderer teardown drains the same
+    /// registry, so there is one owner and no second cleanup path.
+    pub(crate) fn dispose_preview(&mut self, handle: &str) {
+        self.previews.remove(handle);
     }
 
     /// Takes ownership of an already-retained `SCContentFilter` and returns a
@@ -220,6 +253,7 @@ impl AppshotState {
             }
         }
         self.handles.clear();
+        self.previews.clear();
         #[cfg(target_os = "macos")]
         macos::dispose_shortcuts(self);
         self.shortcuts.clear();
@@ -237,4 +271,22 @@ pub(crate) fn one_shot_png() -> Buffer {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub(crate) fn unavailable() -> Error {
     Error::from_reason("Appshot is unavailable")
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_handle_retains_only_renderer_local_image_until_disposed() {
+        let mut state = AppshotState::default();
+        let preview = state.create_preview(one_shot_png()).expect("PNG preview");
+
+        assert!(preview.starts_with("appshot-preview-"));
+        assert!(state.preview_image(&preview).is_some());
+        state.dispose_preview(&preview);
+        assert!(state.preview_image(&preview).is_none());
+        state.dispose_preview(&preview);
+        assert!(state.preview_image(&preview).is_none());
+    }
 }

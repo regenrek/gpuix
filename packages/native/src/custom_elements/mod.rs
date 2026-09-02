@@ -43,6 +43,10 @@ pub struct CustomRenderContext<'a> {
     pub focus_handle: Option<&'a gpui::FocusHandle>,
     /// Style object from the retained element for layout and appearance.
     pub style: Option<&'a crate::style::StyleDesc>,
+    /// Renderer-local appshot preview images. This registry is never part of
+    /// retained React data; custom image elements receive opaque tokens only.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub appshot: &'a std::sync::Arc<std::sync::Mutex<crate::appshot::AppshotState>>,
     /// Built child elements from the retained tree for this custom node.
     pub children: Vec<gpui::AnyElement>,
     /// Live text selection. Elements that paint text MUST route it through

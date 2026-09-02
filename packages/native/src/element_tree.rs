@@ -139,6 +139,8 @@ pub struct EventPayload {
     pub browser_download_id: Option<String>,
     /// Suggested filename reported by WebKit for an observed download.
     pub browser_suggested_filename: Option<String>,
+    /// File URL selected by the native, app-window-bound save sheet.
+    pub browser_selected_file_url: Option<String>,
     /// Caller-generated request identity for an explicit browser-data clear.
     pub browser_request_id: Option<String>,
     /// Browser action category requiring one matching host decision.
@@ -192,6 +194,7 @@ impl Default for EventPayload {
             browser_profile_id: None,
             browser_download_id: None,
             browser_suggested_filename: None,
+            browser_selected_file_url: None,
             browser_request_id: None,
             browser_action_kind: None,
             browser_navigation_intent: None,

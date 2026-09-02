@@ -80,6 +80,7 @@ export type {
   BrowserActionKind,
   BrowserActionRequestedEvent,
   BrowserDataClearedEvent,
+  BrowserDownloadDestinationSelectedEvent,
   BrowserLoadingEvent,
   BrowserNavigationIntent,
   BrowserNavigationIntentKind,
@@ -89,6 +90,7 @@ export type {
   TerminalProps,
   AppshotPermission,
   AppshotSelection,
+  ImgProps,
 } from "./types/host.js"
 export { handleGpuixEvent } from "./reconciler/event-registry.js"
 export {

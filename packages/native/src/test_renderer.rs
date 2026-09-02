@@ -122,6 +122,8 @@ impl TestGpuixRenderer {
         let callback_clone = event_callback.clone();
         let selection = crate::text::SharedSelection::default();
         let selection_clone = selection.clone();
+        let appshot = Arc::new(Mutex::new(AppshotState::default()));
+        let appshot_clone = appshot.clone();
 
         // Create VisualTestAppContext with real macOS Metal rendering +
         // TestDispatcher for deterministic scheduling.
@@ -142,6 +144,7 @@ impl TestGpuixRenderer {
                         callback_clone,
                         "GPUIX Test".to_string(),
                         selection_clone,
+                        appshot_clone,
                     )
                 })
             })
@@ -164,7 +167,7 @@ impl TestGpuixRenderer {
             tree,
             events,
             selection,
-            appshot: Arc::new(Mutex::new(AppshotState::default())),
+            appshot,
         })
     }
 
@@ -221,6 +224,16 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn dispose_appshot_window(&self, handle: String) {
         self.appshot.lock().unwrap().dispose_handle(&handle);
+    }
+
+    #[napi(ts_return_type = "string")]
+    pub fn create_appshot_preview(&self, png: Buffer) -> Result<String> {
+        self.appshot.lock().unwrap().create_preview(png)
+    }
+
+    #[napi]
+    pub fn dispose_appshot_preview(&self, handle: String) {
+        self.appshot.lock().unwrap().dispose_preview(&handle);
     }
 
     #[napi]

@@ -1,5 +1,10 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.8
+
+- Add opaque renderer-lifetime Appshot preview handles on macOS.
+- Add native two-phase browser download destination selection.
+
 ## 0.5.0-regenrek.6
 
 ### Patch Changes

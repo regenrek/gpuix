@@ -72,6 +72,8 @@ impl ImgObjectFit {
 #[derive(Debug, Clone, Default)]
 pub struct ImgElement {
     src: String,
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    preview_handle: Option<String>,
     inline_image: Option<Arc<gpui::Image>>,
     inline_error: bool,
     object_fit: ImgObjectFit,
@@ -108,7 +110,12 @@ impl CustomElement for ImgElement {
     ) -> gpui::AnyElement {
         use gpui::prelude::*;
 
-        if self.src.trim().is_empty() {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        let has_preview = self.preview_handle.is_some();
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let has_preview = false;
+
+        if self.src.trim().is_empty() && !has_preview {
             let mut fallback = gpui::div()
                 .flex()
                 .items_center()
@@ -126,6 +133,32 @@ impl CustomElement for ImgElement {
             return fallback.into_any_element();
         }
 
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        let source: gpui::ImageSource = if let Some(handle) = &self.preview_handle {
+            let Some(image) = ctx.appshot.lock().unwrap().preview_image(handle) else {
+                return missing_preview(ctx.style);
+            };
+            image.into()
+        } else if let Some(image) = &self.inline_image {
+            image.clone().into()
+        } else if self.inline_error {
+            let mut fallback = gpui::div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(gpui::rgba(0x1f2230ff))
+                .border(gpui::px(1.0))
+                .border_color(gpui::rgba(0x5d6481ff))
+                .text_color(gpui::rgba(0xa4accdff))
+                .child("img: invalid inline source");
+            if let Some(style) = ctx.style {
+                fallback = crate::renderer::apply_styles(fallback, style);
+            }
+            return fallback.into_any_element();
+        } else {
+            std::path::PathBuf::from(self.src.clone()).into()
+        };
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         let source: gpui::ImageSource = if let Some(image) = &self.inline_image {
             image.clone().into()
         } else if self.inline_error {
@@ -170,6 +203,10 @@ impl CustomElement for ImgElement {
     fn set_prop(&mut self, key: &str, value: serde_json::Value) {
         match key {
             "src" => self.load_src(value.as_str().unwrap_or("").to_string()),
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            "appshotPreviewHandle" => {
+                self.preview_handle = value.as_str().map(ToOwned::to_owned);
+            }
             "objectFit" => {
                 self.object_fit = value
                     .as_str()
@@ -181,6 +218,9 @@ impl CustomElement for ImgElement {
     }
 
     fn supported_props(&self) -> &'static [&'static str] {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        return &["src", "appshotPreviewHandle", "objectFit"];
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         &["src", "objectFit"]
     }
 
@@ -189,6 +229,25 @@ impl CustomElement for ImgElement {
     }
 
     fn destroy(&mut self) {}
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn missing_preview(style: Option<&crate::style::StyleDesc>) -> gpui::AnyElement {
+    use gpui::prelude::*;
+
+    let mut fallback = gpui::div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(gpui::rgba(0x1f2230ff))
+        .border(gpui::px(1.0))
+        .border_color(gpui::rgba(0x5d6481ff))
+        .text_color(gpui::rgba(0xa4accdff))
+        .child("img: preview unavailable");
+    if let Some(style) = style {
+        fallback = crate::renderer::apply_styles(fallback, style);
+    }
+    fallback.into_any_element()
 }
 
 #[cfg(test)]

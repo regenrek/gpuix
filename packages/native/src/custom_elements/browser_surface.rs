@@ -36,7 +36,7 @@ struct BrowserSurfaceElement {
     applied_navigation_intent_id: String,
     pending_navigation_intents: HashMap<String, BrowserNavigationIntent>,
     action_decision: Option<BrowserActionDecisionProp>,
-    applied_action_decision_id: String,
+    applied_action_decision: Option<BrowserActionResolution>,
     clear_data_request_id: String,
     applied_clear_data_request_id: String,
     surface_profile_id: String,
@@ -54,7 +54,7 @@ impl Default for BrowserSurfaceElement {
             applied_navigation_intent_id: String::new(),
             pending_navigation_intents: HashMap::new(),
             action_decision: None,
-            applied_action_decision_id: String::new(),
+            applied_action_decision: None,
             clear_data_request_id: String::new(),
             applied_clear_data_request_id: String::new(),
             surface_profile_id: String::new(),
@@ -94,12 +94,16 @@ impl BrowserSurfaceElement {
         self.pending_navigation_intents.clear();
         if !preserve_applied_requests {
             self.applied_navigation_intent_id.clear();
-            self.applied_action_decision_id.clear();
+            self.applied_action_decision = None;
             self.applied_clear_data_request_id.clear();
         }
     }
 
-    fn request_navigation_intent(&mut self, event_callback: &Option<crate::renderer::EventCallback>, element_id: u64) {
+    fn request_navigation_intent(
+        &mut self,
+        event_callback: &Option<crate::renderer::EventCallback>,
+        element_id: u64,
+    ) {
         let Some(intent) = self.navigation_intent.as_ref() else {
             return;
         };
@@ -110,7 +114,8 @@ impl BrowserSurfaceElement {
         let Some(intent) = intent.into_navigation_intent() else {
             return;
         };
-        self.pending_navigation_intents.insert(request_id.clone(), intent.clone());
+        self.pending_navigation_intents
+            .insert(request_id.clone(), intent.clone());
         emit_browser_event(
             event_callback,
             element_id,
@@ -127,16 +132,24 @@ impl BrowserSurfaceElement {
         let Some(decision) = self.action_decision.as_ref() else {
             return;
         };
-        if decision.request_id.is_empty() || decision.request_id == self.applied_action_decision_id {
+        if decision.request_id.is_empty() {
             return;
         }
         let Some(resolution) = decision.into_resolution() else {
             return;
         };
-        let accepted = if let Some(intent) = self.pending_navigation_intents.get(&resolution.request_id).cloned() {
-            match resolution.decision {
+        if self.applied_action_decision.as_ref() == Some(&resolution) {
+            return;
+        }
+        let accepted = if let Some(intent) = self
+            .pending_navigation_intents
+            .get(&resolution.request_id)
+            .cloned()
+        {
+            match &resolution.decision {
                 BrowserActionDecision::Allow => {
-                    self.pending_navigation_intents.remove(&resolution.request_id);
+                    self.pending_navigation_intents
+                        .remove(&resolution.request_id);
                     match intent {
                         BrowserNavigationIntent::Navigate { url } => surface.load_url(&url),
                         BrowserNavigationIntent::Back => surface.go_back(),
@@ -146,16 +159,19 @@ impl BrowserSurfaceElement {
                     true
                 }
                 BrowserActionDecision::Cancel => {
-                    self.pending_navigation_intents.remove(&resolution.request_id);
+                    self.pending_navigation_intents
+                        .remove(&resolution.request_id);
                     true
                 }
-                BrowserActionDecision::Download | BrowserActionDecision::Save { .. } => false,
+                BrowserActionDecision::Download
+                | BrowserActionDecision::SelectDestination
+                | BrowserActionDecision::Save => false,
             }
         } else {
-            surface.resolve_action(resolution)
+            surface.resolve_action(resolution.clone())
         };
         if accepted {
-            self.applied_action_decision_id.clone_from(&decision.request_id);
+            self.applied_action_decision = Some(resolution);
         }
     }
 
@@ -188,9 +204,11 @@ struct NavigationIntentProp {
 impl NavigationIntentProp {
     fn into_navigation_intent(&self) -> Option<BrowserNavigationIntent> {
         match self.kind.as_str() {
-            "navigate" => self.url.as_ref().filter(|url| !url.trim().is_empty()).map(|url| {
-                BrowserNavigationIntent::Navigate { url: url.clone() }
-            }),
+            "navigate" => self
+                .url
+                .as_ref()
+                .filter(|url| !url.trim().is_empty())
+                .map(|url| BrowserNavigationIntent::Navigate { url: url.clone() }),
             "back" => Some(BrowserNavigationIntent::Back),
             "forward" => Some(BrowserNavigationIntent::Forward),
             "reload" => Some(BrowserNavigationIntent::Reload),
@@ -204,7 +222,6 @@ impl NavigationIntentProp {
 struct BrowserActionDecisionProp {
     request_id: String,
     decision: String,
-    destination_url: Option<String>,
 }
 
 impl BrowserActionDecisionProp {
@@ -213,13 +230,8 @@ impl BrowserActionDecisionProp {
             "allow" => BrowserActionDecision::Allow,
             "cancel" => BrowserActionDecision::Cancel,
             "download" => BrowserActionDecision::Download,
-            "save" => self
-                .destination_url
-                .as_ref()
-                .filter(|url| !url.trim().is_empty())
-                .map(|url| BrowserActionDecision::Save {
-                    destination_url: url.clone(),
-                })?,
+            "selectDestination" => BrowserActionDecision::SelectDestination,
+            "save" => BrowserActionDecision::Save,
             _ => return None,
         };
         Some(BrowserActionResolution {
@@ -328,6 +340,7 @@ impl CustomElement for BrowserSurfaceElement {
             "browserLoading",
             "browserActionRequested",
             "browserDataCleared",
+            "browserDownloadDestinationSelected",
         ]
     }
 
@@ -349,16 +362,18 @@ fn emit_browser_event(
                 payload.browser_action_kind = Some(request.kind().to_string());
                 match request {
                     BrowserActionRequest::NavigationIntent { intent, .. } => {
-                        payload.browser_navigation_intent = Some(match intent {
-                            BrowserNavigationIntent::Navigate { url } => {
-                                payload.browser_url = Some(url);
-                                "navigate"
+                        payload.browser_navigation_intent = Some(
+                            match intent {
+                                BrowserNavigationIntent::Navigate { url } => {
+                                    payload.browser_url = Some(url);
+                                    "navigate"
+                                }
+                                BrowserNavigationIntent::Back => "back",
+                                BrowserNavigationIntent::Forward => "forward",
+                                BrowserNavigationIntent::Reload => "reload",
                             }
-                            BrowserNavigationIntent::Back => "back",
-                            BrowserNavigationIntent::Forward => "forward",
-                            BrowserNavigationIntent::Reload => "reload",
-                        }
-                        .to_string());
+                            .to_string(),
+                        );
                     }
                     BrowserActionRequest::NavigationAction {
                         url,
@@ -413,6 +428,16 @@ fn emit_browser_event(
             BrowserSurfaceEvent::DataCleared { request_id, .. } => {
                 payload.browser_request_id = Some(request_id);
             }
+            BrowserSurfaceEvent::DownloadDestinationSelected {
+                request_id,
+                download_id,
+                selected_file_url,
+                ..
+            } => {
+                payload.browser_request_id = Some(request_id);
+                payload.browser_download_id = Some(download_id);
+                payload.browser_selected_file_url = Some(selected_file_url);
+            }
         }
     });
 }
@@ -421,7 +446,31 @@ fn emit_browser_event(
 mod tests {
     use super::*;
     use gpui::{point, size};
-    use std::sync::{Arc, Mutex};
+    use std::{
+        cell::RefCell,
+        sync::{Arc, Mutex},
+    };
+
+    #[derive(Default)]
+    struct FakeBrowserSurface {
+        resolutions: RefCell<Vec<BrowserActionResolution>>,
+    }
+
+    impl PlatformBrowserSurface for FakeBrowserSurface {
+        fn load_url(&self, _: &str) {}
+        fn go_back(&self) {}
+        fn go_forward(&self) {}
+        fn reload(&self) {}
+        fn resolve_action(&self, resolution: BrowserActionResolution) -> bool {
+            self.resolutions.borrow_mut().push(resolution);
+            true
+        }
+        fn clear_data(&self, _: &str) {}
+        fn set_observer(&self, _: Option<BrowserSurfaceObserver>) {}
+        fn set_geometry(&self, _: NativeSurfaceGeometry) {}
+        fn focus(&self) {}
+        fn destroy(&self) {}
+    }
 
     #[test]
     fn effective_clip_intersects_the_prepaint_bounds_with_the_cumulative_mask() {
@@ -490,5 +539,105 @@ mod tests {
         assert_eq!(events[0].browser_can_show_mime_type, None);
         assert_eq!(events[1].browser_should_perform_download, None);
         assert_eq!(events[1].browser_can_show_mime_type, Some(false));
+    }
+
+    #[test]
+    fn download_selection_decisions_cannot_receive_a_host_destination_url() {
+        let select = serde_json::from_value::<BrowserActionDecisionProp>(serde_json::json!({
+            "requestId": "download-request",
+            "decision": "selectDestination",
+            "destinationUrl": "file:///ignored-by-native"
+        }))
+        .unwrap();
+        assert!(matches!(
+            select.into_resolution().unwrap().decision,
+            BrowserActionDecision::SelectDestination
+        ));
+
+        let save = serde_json::from_value::<BrowserActionDecisionProp>(serde_json::json!({
+            "requestId": "download-request",
+            "decision": "save"
+        }))
+        .unwrap();
+        assert!(matches!(
+            save.into_resolution().unwrap().decision,
+            BrowserActionDecision::Save
+        ));
+    }
+
+    #[test]
+    fn destination_selected_event_keeps_the_exact_native_identity() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let callback: crate::renderer::EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+
+        emit_browser_event(
+            &Some(callback),
+            7,
+            BrowserSurfaceEvent::DownloadDestinationSelected {
+                request_id: "request-7".into(),
+                download_id: "profile:7".into(),
+                selected_file_url: "file:///selected.txt".into(),
+                profile_id: "profile".into(),
+            },
+        );
+
+        let event = events.lock().unwrap().pop().unwrap();
+        assert_eq!(event.event_type, "browserDownloadDestinationSelected");
+        assert_eq!(event.browser_request_id.as_deref(), Some("request-7"));
+        assert_eq!(event.browser_profile_id.as_deref(), Some("profile"));
+        assert_eq!(event.browser_download_id.as_deref(), Some("profile:7"));
+        assert_eq!(
+            event.browser_selected_file_url.as_deref(),
+            Some("file:///selected.txt")
+        );
+    }
+
+    fn apply_download_decision_sequence(final_decision: &str) {
+        let surface = FakeBrowserSurface::default();
+        let mut element = BrowserSurfaceElement::default();
+        element.action_decision = Some(BrowserActionDecisionProp {
+            request_id: "download-request".into(),
+            decision: "selectDestination".into(),
+        });
+
+        element.apply_action_decision(&surface);
+        element.apply_action_decision(&surface);
+        element.action_decision = Some(BrowserActionDecisionProp {
+            request_id: "download-request".into(),
+            decision: final_decision.into(),
+        });
+        element.apply_action_decision(&surface);
+        element.apply_action_decision(&surface);
+
+        assert_eq!(
+            *surface.resolutions.borrow(),
+            vec![
+                BrowserActionResolution {
+                    request_id: "download-request".into(),
+                    decision: BrowserActionDecision::SelectDestination,
+                },
+                BrowserActionResolution {
+                    request_id: "download-request".into(),
+                    decision: match final_decision {
+                        "save" => BrowserActionDecision::Save,
+                        "cancel" => BrowserActionDecision::Cancel,
+                        _ => unreachable!(),
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn download_selection_then_save_resolves_the_same_request_once_per_decision_kind() {
+        apply_download_decision_sequence("save");
+    }
+
+    #[test]
+    fn download_selection_then_cancel_resolves_the_same_request_once_per_decision_kind() {
+        apply_download_decision_sequence("cancel");
     }
 }

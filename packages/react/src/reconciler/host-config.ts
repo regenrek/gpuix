@@ -86,6 +86,7 @@ const EVENT_PROPS = [
   ["onBrowserLoading", "browserLoading"],
   ["onBrowserActionRequested", "browserActionRequested"],
   ["onBrowserDataCleared", "browserDataCleared"],
+  ["onBrowserDownloadDestinationSelected", "browserDownloadDestinationSelected"],
   ["onChange", "change"],
   ["onSubmit", "submit"],
   // Mouse events

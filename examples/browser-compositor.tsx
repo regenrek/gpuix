@@ -3,7 +3,14 @@
  * It intentionally uses local data URLs so the proof has no network dependency.
  */
 import React, { createElement, useState } from "react"
-import { render, SplitView, type BrowserActionDecision, type BrowserActionRequestedEvent, type BrowserNavigationIntent } from "@regenrek/gpuix-react"
+import {
+  render,
+  SplitView,
+  type BrowserActionDecision,
+  type BrowserActionRequestedEvent,
+  type BrowserDownloadDestinationSelectedEvent,
+  type BrowserNavigationIntent,
+} from "@regenrek/gpuix-react"
 
 const BROWSER_A_PROFILE = "1bf766d4-9632-4292-b2d4-6d7058cd78af"
 const BROWSER_B_PROFILE = "a4eb96bc-1f22-471a-b9f8-bc7c2f7633a2"
@@ -19,9 +26,10 @@ type BrowserProps = {
   clearDataRequestId?: string
   onEvent: (message: string) => void
   onActionRequested?: (event: BrowserActionRequestedEvent) => void
+  onDestinationSelected?: (event: BrowserDownloadDestinationSelectedEvent) => void
 }
 
-function Browser({ label, profileId, navigationIntent, actionDecision, clearDataRequestId, onEvent, onActionRequested }: BrowserProps) {
+function Browser({ label, profileId, navigationIntent, actionDecision, clearDataRequestId, onEvent, onActionRequested, onDestinationSelected }: BrowserProps) {
   return createElement("browser-surface", {
     profileId,
     testId: label === "Browser A" ? "browser-a" : "browser-b",
@@ -39,6 +47,10 @@ function Browser({ label, profileId, navigationIntent, actionDecision, clearData
     },
     onBrowserDataCleared: (event: { browserProfileId: string; browserRequestId: string }) =>
       onEvent(`${label}: cleared ${event.browserProfileId} (${event.browserRequestId})`),
+    onBrowserDownloadDestinationSelected: (event: BrowserDownloadDestinationSelectedEvent) => {
+      onEvent(`${label}: destination selected ${event.browserRequestId}`)
+      onDestinationSelected?.(event)
+    },
   })
 }
 
@@ -56,8 +68,7 @@ function App() {
     if (event.browserActionKind === "downloadDestination") {
       setDecision({
         requestId: event.browserRequestId,
-        decision: "save",
-        destinationUrl: "file:///tmp/gpuix-browser-compositor-proof.txt",
+        decision: "selectDestination",
       })
     } else if (
       event.browserShouldPerformDownload === true ||
@@ -69,6 +80,9 @@ function App() {
     } else {
       setDecision({ requestId: event.browserRequestId, decision: "allow" })
     }
+  }
+  const saveSelectedDestination = (setDecision: (decision: BrowserActionDecision) => void) => (event: BrowserDownloadDestinationSelectedEvent) => {
+    setDecision({ requestId: event.browserRequestId, decision: "save" })
   }
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", backgroundColor: "#0b1020", color: "#e8eefc", padding: 12, gap: 8 }}>
@@ -97,10 +111,10 @@ function App() {
         </anchored>
       )}
       <SplitView direction="horizontal" defaultRatio={0.5} minSize={220} minSecondSize={220} style={{ flexGrow: 1, minHeight: 0 }}>
-        <Browser label="Browser A" profileId={BROWSER_A_PROFILE} navigationIntent={browserAIntent} actionDecision={browserADecision} clearDataRequestId={String(clearA)} onEvent={record} onActionRequested={decide(setBrowserADecision)} />
+        <Browser label="Browser A" profileId={BROWSER_A_PROFILE} navigationIntent={browserAIntent} actionDecision={browserADecision} clearDataRequestId={String(clearA)} onEvent={record} onActionRequested={decide(setBrowserADecision)} onDestinationSelected={saveSelectedDestination(setBrowserADecision)} />
         <SplitView direction="vertical" defaultRatio={0.55} minSize={160} minSecondSize={160}>
           {showSecond ? (
-            <Browser label="Browser B" profileId={BROWSER_B_PROFILE} navigationIntent={browserBIntent} actionDecision={browserBDecision} onEvent={record} onActionRequested={decide(setBrowserBDecision)} />
+            <Browser label="Browser B" profileId={BROWSER_B_PROFILE} navigationIntent={browserBIntent} actionDecision={browserBDecision} onEvent={record} onActionRequested={decide(setBrowserBDecision)} onDestinationSelected={saveSelectedDestination(setBrowserBDecision)} />
           ) : (
             <div testId="browser-b-removed" style={{ display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#131c31", borderRadius: 12 }}>
               Browser B removed

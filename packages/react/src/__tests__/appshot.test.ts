@@ -11,8 +11,8 @@ type NativeAppshotContract = Pick<
   | "captureAppshotWindow"
   | "captureFrontmostAppshot"
   | "disposeAppshotWindow"
-  | "registerGlobalShortcut"
-  | "unregisterGlobalShortcut"
+  | "createAppshotPreview"
+  | "disposeAppshotPreview"
 >
 
 describe("appshot", () => {
@@ -42,35 +42,29 @@ describe("appshot", () => {
     await expect(renderer.selectAppshotWindow()).resolves.toEqual({ status: "cancelled" })
   })
 
-  it("dispatches and removes renderer-lifetime shortcuts through the native event owner", () => {
+  it("captures into a native preview, renders its opaque handle, then disposes it", async () => {
     const renderer = new TestRenderer()
-    const token = renderer.registerGlobalShortcut("cmd-shift-9")
-    renderer.triggerGlobalShortcut(token)
-    expect(renderer.drainEvents()).toEqual([
-      expect.objectContaining({ eventType: "globalShortcut", value: token }),
-    ])
-    expect(() => renderer.registerGlobalShortcut("cmd-shift-9")).toThrow()
-    renderer.unregisterGlobalShortcut(token)
-    expect(() => renderer.triggerGlobalShortcut(token)).toThrow("unavailable")
-  })
+    renderer.setAppshotSelection(true)
+    const selected = await renderer.selectAppshotWindow()
+    const png = await renderer.captureAppshotWindow(selected.handle!)
+    const preview = renderer.createAppshotPreview(png)
 
-  it("keeps shortcut callbacks renderer-local while consuming the native appshot contract", () => {
-    const first = new TestRenderer()
-    const second = new TestRenderer()
-    const firstContract: NativeAppshotContract = first
-    const secondContract: NativeAppshotContract = second
-    const firstToken = firstContract.registerGlobalShortcut("cmd-shift-8")
-    const secondToken = secondContract.registerGlobalShortcut("cmd-shift-8")
+    expect(preview).toMatch(/^appshot-preview-\d+$/)
+    expect(preview).not.toContain("/")
+    expect(preview).not.toContain("data:")
+    expect(preview).not.toContain("base64")
 
-    first.triggerGlobalShortcut(firstToken)
-    expect(first.drainEvents()).toEqual([
-      expect.objectContaining({ eventType: "globalShortcut", value: firstToken }),
-    ])
-    expect(second.drainEvents()).toEqual([])
+    renderer.createElement(1, "img")
+    renderer.setCustomProp(1, "appshotPreviewHandle", JSON.stringify(preview))
+    renderer.setStyle(1, JSON.stringify({ width: 160, height: 90 }))
+    renderer.setRoot(1)
+    renderer.commitMutations()
+    renderer.flush()
 
-    second.triggerGlobalShortcut(secondToken)
-    expect(second.drainEvents()).toEqual([
-      expect.objectContaining({ eventType: "globalShortcut", value: secondToken }),
-    ])
+    const image = renderer.findByType("img")[0]
+    expect(image.customProps).toEqual({ appshotPreviewHandle: preview })
+    expect(image.customProps).not.toHaveProperty("src")
+    renderer.disposeAppshotPreview(preview)
+    renderer.flush()
   })
 })
