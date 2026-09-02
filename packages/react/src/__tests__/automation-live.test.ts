@@ -34,6 +34,29 @@ describeMac("live automation stdio", () => {
       expect((await app.call("getAllText", {})).text).toContain(
         "Command events: up:cmd-c"
       )
+
+      const { tree: updatedTree } = await app.call("getTree", {})
+      const scroller = findTestId(updatedTree, "live-automation-scroll")
+      expect(scroller).toBeDefined()
+      const { bounds } = await app.call("getBounds", {
+        elementId: scroller!.id,
+      })
+      expect(bounds).not.toBeNull()
+      expect(
+        (await app.call("getScrollOffset", { elementId: scroller!.id })).offset
+      ).toEqual([0, 0])
+
+      await app.call("scrollWheel", {
+        x: bounds!.x + bounds!.width / 2,
+        y: bounds!.y + bounds!.height / 2,
+        deltaX: 0,
+        deltaY: -80,
+      })
+
+      const afterScroll = await app.call("getScrollOffset", {
+        elementId: scroller!.id,
+      })
+      expect(afterScroll.offset?.[1]).toBeLessThan(0)
     } finally {
       await app.close()
     }

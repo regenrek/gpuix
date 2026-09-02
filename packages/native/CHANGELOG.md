@@ -1,5 +1,11 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.9
+
+### Patch Changes
+
+- Expose live scroll-wheel automation through GPUI's production input path.
+
 ## 0.5.0-regenrek.8
 
 - Add opaque renderer-lifetime Appshot preview handles on macOS.

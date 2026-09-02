@@ -265,6 +265,12 @@ enum MouseInput {
         y: f64,
         pressed_button: Option<u32>,
     },
+    Scroll {
+        x: f64,
+        y: f64,
+        delta_x: f64,
+        delta_y: f64,
+    },
 }
 
 enum KeyboardInput {
@@ -595,6 +601,16 @@ async fn run_ui_commands(
                         pressed_button,
                     } => {
                         crate::automation::dispatch_mouse_move(window, cx, x, y, pressed_button);
+                    }
+                    MouseInput::Scroll {
+                        x,
+                        y,
+                        delta_x,
+                        delta_y,
+                    } => {
+                        crate::automation::dispatch_scroll_wheel(
+                            window, cx, x, y, delta_x, delta_y,
+                        );
                     }
                 });
                 response
@@ -2107,6 +2123,36 @@ impl GpuixRenderer {
         )))]
         {
             let _ = (x, y, pressed_button);
+            Err(Error::from_reason(
+                "The production GPUIX renderer does not support this operating system",
+            ))
+        }
+    }
+
+    /// Simulate a scroll wheel event through GPUI's production input path.
+    #[napi]
+    pub fn simulate_scroll_wheel(&self, x: f64, y: f64, delta_x: f64, delta_y: f64) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        return update_window(move |_view, window, cx| {
+            crate::automation::dispatch_scroll_wheel(window, cx, x, y, delta_x, delta_y);
+        });
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "freebsd"))]
+        return self.dispatch_mouse_input(MouseInput::Scroll {
+            x,
+            y,
+            delta_x,
+            delta_y,
+        });
+
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "freebsd"
+        )))]
+        {
+            let _ = (x, y, delta_x, delta_y);
             Err(Error::from_reason(
                 "The production GPUIX renderer does not support this operating system",
             ))

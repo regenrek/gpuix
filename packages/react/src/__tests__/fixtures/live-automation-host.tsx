@@ -36,6 +36,14 @@ function LiveAutomationHost() {
       />
       <text>{`Value: ${value}`}</text>
       <text>{`Command events: ${commandEvents.join(",") || "none"}`}</text>
+      <div
+        testId="live-automation-scroll"
+        style={{ width: 240, height: 48, overflowY: "scroll" }}
+      >
+        <div style={{ height: 240 }}>
+          <text>Scrollable live content</text>
+        </div>
+      </div>
     </div>
   )
 }

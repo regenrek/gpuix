@@ -148,6 +148,8 @@ export declare class GpuixRenderer {
   simulateMouseDown(x: number, y: number, button?: number | undefined | null): void
   simulateMouseUp(x: number, y: number, button?: number | undefined | null): void
   simulateMouseMove(x: number, y: number, pressedButton?: number | undefined | null): void
+  /** Simulate a scroll wheel event through GPUI's production input path. */
+  simulateScrollWheel(x: number, y: number, deltaX: number, deltaY: number): void
   /** Simulate space-separated keys through GPUI's production input path. */
   simulateKeystrokes(keystrokes: string): void
   /** Simulate one key-down event while preserving its parsed modifiers. */

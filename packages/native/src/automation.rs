@@ -299,7 +299,6 @@ pub fn dispatch_key_up(window: &mut Window, cx: &mut App, keystroke: &str) -> Re
     Ok(())
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub fn dispatch_scroll_wheel(
     window: &mut Window,
     cx: &mut App,

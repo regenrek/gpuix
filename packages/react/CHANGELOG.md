@@ -1,5 +1,13 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.9
+
+### Patch Changes
+
+- Expose live scroll-wheel automation through GPUI's production input path.
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.9
+
 ## 0.5.0-regenrek.8
 
 - Expose opaque Appshot preview handles to native image elements.
