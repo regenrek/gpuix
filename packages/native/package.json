@@ -1,6 +1,6 @@
 {
   "name": "@regenrek/gpuix-native",
-  "version": "0.5.0-regenrek.9",
+  "version": "0.5.0-regenrek.10",
   "license": "Apache-2.0",
   "main": "index.js",
   "types": "index.d.ts",

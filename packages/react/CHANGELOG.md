@@ -1,5 +1,13 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.10
+
+### Patch Changes
+
+- Restore GPUI keyboard focus when a user clicks native GPUI content after interacting with an embedded browser.
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.10
+
 ## 0.5.0-regenrek.9
 
 ### Patch Changes
