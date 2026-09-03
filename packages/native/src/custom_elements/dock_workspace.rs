@@ -17,10 +17,11 @@ use gpui::{
 use serde::{Deserialize, Serialize};
 
 use super::{CustomElement, CustomElementFactory, CustomRenderContext};
+use crate::theme::{with_alpha, Theme};
 
-const TAB_HEIGHT: f32 = 30.0;
 const DROP_BAND: f32 = 0.24;
 const DIVIDER_HIT_SLOP: f32 = 3.0;
+const TAB_DRAG_THRESHOLD: f64 = 2.0;
 
 pub struct DockWorkspaceFactory;
 
@@ -124,7 +125,9 @@ struct DragState {
     source_node: String,
     preview: DropTarget,
     target_node: String,
+    origin: Point<Pixels>,
     position: Point<Pixels>,
+    active: bool,
 }
 
 #[derive(Clone)]
@@ -155,6 +158,7 @@ struct DockState {
     interaction: Option<Interaction>,
     drag: Option<DragState>,
     closable: HashSet<String>,
+    theme: Theme,
     pending_focus: Option<String>,
     interaction_hitbox: Option<HitboxId>,
 }
@@ -595,7 +599,7 @@ fn live_destination_preview_bounds(
     drag: &DragState,
     tab_group_bounds: &[TabGroupBounds],
 ) -> Option<Bounds<Pixels>> {
-    (!drag.target_node.is_empty())
+    (drag.active && !drag.target_node.is_empty())
         .then(|| {
             tab_group_bounds
                 .iter()
@@ -652,6 +656,7 @@ impl CustomElement for DockWorkspaceElement {
                 }
             }
         }
+        let theme = self.state.borrow().theme.clone();
         let content = self
             .state
             .borrow()
@@ -668,6 +673,7 @@ impl CustomElement for DockWorkspaceElement {
                     ctx.id,
                     ctx.event_callback,
                     ctx.events.contains("layoutChange"),
+                    &theme,
                 )
             })
             .unwrap_or_else(|| gpui::Empty.into_any_element());
@@ -759,6 +765,9 @@ impl CustomElement for DockWorkspaceElement {
                         .filter_map(|(id, closable)| closable.then_some(id))
                         .collect();
             }
+            "theme" => {
+                self.state.borrow_mut().theme = Theme::from_prop(Some(&value));
+            }
             "focusPanelId" => {
                 self.focus_panel_id = value.as_str().map(str::to_string);
                 self.state.borrow_mut().pending_focus = self.focus_panel_id.clone();
@@ -772,6 +781,7 @@ impl CustomElement for DockWorkspaceElement {
             "panelIds",
             "labels",
             "closable",
+            "theme",
             "focusPanelId",
             "accessibilityRole",
             "accessibilityName",
@@ -901,11 +911,11 @@ fn begin_interaction(
             source_node: source.node_id,
             preview: DropTarget::Center,
             target_node: String::new(),
+            origin: position,
             position,
+            active: false,
         });
-        window.capture_pointer(hitbox);
         window.refresh();
-        cx.stop_propagation();
     }
 }
 
@@ -916,6 +926,7 @@ fn build_layout(
     workspace_id: u64,
     callback: &Option<crate::renderer::EventCallback>,
     emits_resize: bool,
+    theme: &Theme,
 ) -> gpui::AnyElement {
     use gpui::prelude::*;
     match layout {
@@ -927,8 +938,24 @@ fn build_layout(
             second,
             ..
         } => {
-            let first = build_layout(first, panels, state, workspace_id, callback, emits_resize);
-            let second = build_layout(second, panels, state, workspace_id, callback, emits_resize);
+            let first = build_layout(
+                first,
+                panels,
+                state,
+                workspace_id,
+                callback,
+                emits_resize,
+                theme,
+            );
+            let second = build_layout(
+                second,
+                panels,
+                state,
+                workspace_id,
+                callback,
+                emits_resize,
+                theme,
+            );
             let mut root = direction.flex(gpui::div().flex().size_full().min_w_0().min_h_0());
             match direction {
                 DockDirection::Horizontal => {
@@ -940,11 +967,13 @@ fn build_layout(
                                 .min_h_0()
                                 .child(first),
                         )
-                        .child(gpui::div().w(px(1.0)).child(DividerBoundsTracker {
-                            state: state.clone(),
-                            node_id: id.clone(),
-                            direction: *direction,
-                        }))
+                        .child(gpui::div().w(px(1.0)).bg(theme.border).child(
+                            DividerBoundsTracker {
+                                state: state.clone(),
+                                node_id: id.clone(),
+                                direction: *direction,
+                            },
+                        ))
                         .child(gpui::div().flex_grow(1.0).min_w_0().min_h_0().child(second));
                 }
                 DockDirection::Vertical => {
@@ -956,11 +985,13 @@ fn build_layout(
                                 .min_h_0()
                                 .child(first),
                         )
-                        .child(gpui::div().h(px(1.0)).child(DividerBoundsTracker {
-                            state: state.clone(),
-                            node_id: id.clone(),
-                            direction: *direction,
-                        }))
+                        .child(gpui::div().h(px(1.0)).bg(theme.border).child(
+                            DividerBoundsTracker {
+                                state: state.clone(),
+                                node_id: id.clone(),
+                                direction: *direction,
+                            },
+                        ))
                         .child(gpui::div().flex_grow(1.0).min_w_0().min_h_0().child(second));
                 }
             }
@@ -986,8 +1017,11 @@ fn build_layout(
             let mut headers = gpui::div()
                 .flex()
                 .flex_row()
-                .h(px(TAB_HEIGHT))
+                .h(px(theme.metrics.dock_tab_height))
                 .flex_none()
+                .bg(theme.bg)
+                .border_b_1()
+                .border_color(theme.border)
                 .overflow_hidden();
             for panel_id in panel_ids {
                 let label = state
@@ -1009,15 +1043,23 @@ fn build_layout(
                             format!("{id}:{panel_id}"),
                         ))
                         .h_full()
+                        .flex_1()
+                        .min_w_0()
                         .relative()
-                        .px_2()
+                        .px(px(theme.metrics.dock_tab_padding_x))
                         .flex()
                         .items_center()
+                        .overflow_hidden()
                         .cursor_pointer()
                         .bg(if is_active {
-                            gpui::rgba(0x303746ff)
+                            with_alpha(theme.text, 0.08)
                         } else {
-                            gpui::rgba(0x20242cff)
+                            theme.bg
+                        })
+                        .text_color(if is_active {
+                            theme.text
+                        } else {
+                            theme.text_muted
                         })
                         .on_click(move |_event, _window, _cx| {
                             let mut guard = tab_state.borrow_mut();
@@ -1036,16 +1078,23 @@ fn build_layout(
                                 }
                             }
                         })
-                        .child(crate::text::chrome_text(label.into(), None))
-                        .when(closable, |tab| {
+                        .child(
+                            gpui::div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .child(crate::text::chrome_text(label.into(), None)),
+                        )
+                        .when(is_active && closable, |tab| {
                             tab.child(
                                 gpui::div()
                                     .id((
                                         gpui::ElementId::from(("dock-close", workspace_id)),
                                         format!("{id}:{panel_id}"),
                                     ))
-                                    .ml_1()
-                                    .px_1()
+                                    .ml(px(theme.metrics.dock_control_gap))
+                                    .px(px(theme.metrics.dock_control_padding_x))
+                                    .flex_none()
                                     .relative()
                                     .cursor_pointer()
                                     .child(crate::text::chrome_text("×".into(), None))
@@ -1057,23 +1106,26 @@ fn build_layout(
                                     )),
                             )
                         })
-                        .child({
-                            gpui::div()
-                                .id((
-                                    gpui::ElementId::from(("dock-zoom", workspace_id)),
-                                    format!("{id}:{panel_id}"),
-                                ))
-                                .ml_1()
-                                .px_1()
-                                .relative()
-                                .cursor_pointer()
-                                .child(crate::text::chrome_text("↗".into(), None))
-                                .child(gpui::div().absolute().size_full().child(
-                                    ControlBoundsTracker {
-                                        state: state.clone(),
-                                        control: DockControl::ToggleZoom(panel_id.clone()),
-                                    },
-                                ))
+                        .when(is_active, |tab| {
+                            tab.child({
+                                gpui::div()
+                                    .id((
+                                        gpui::ElementId::from(("dock-zoom", workspace_id)),
+                                        format!("{id}:{panel_id}"),
+                                    ))
+                                    .ml(px(theme.metrics.dock_control_gap))
+                                    .px(px(theme.metrics.dock_control_padding_x))
+                                    .flex_none()
+                                    .relative()
+                                    .cursor_pointer()
+                                    .child(crate::text::chrome_text("↗".into(), None))
+                                    .child(gpui::div().absolute().size_full().child(
+                                        ControlBoundsTracker {
+                                            state: state.clone(),
+                                            control: DockControl::ToggleZoom(panel_id.clone()),
+                                        },
+                                    ))
+                            })
                         })
                         .child(gpui::div().absolute().size_full().child(TabBoundsTracker {
                             state: state.clone(),
@@ -1583,7 +1635,13 @@ impl Element for DockInteractionLayer {
         // receiving pointer focus.
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
         self.state.borrow_mut().interaction_hitbox = Some(hitbox.id);
-        if self.state.borrow().drag.is_some() {
+        if self
+            .state
+            .borrow()
+            .drag
+            .as_ref()
+            .is_some_and(|drag| drag.active)
+        {
             window.capture_pointer(hitbox.id);
         }
         DockInteractionPrepaint { bounds }
@@ -1667,12 +1725,24 @@ impl Element for DockInteractionLayer {
                         .cloned();
                     let mut guard = state.borrow_mut();
                     let drag = guard.drag.as_mut().expect("drag state exists");
+                    if !drag.active
+                        && (event.position - drag.origin).magnitude() <= TAB_DRAG_THRESHOLD
+                    {
+                        return;
+                    }
+                    let became_active = !drag.active;
+                    drag.active = true;
                     drag.position = event.position;
                     if let Some(target) = target {
                         drag.target_node = target.node_id;
                         drag.preview = drop_target(target.bounds, event.position);
                     } else {
                         drag.target_node.clear();
+                    }
+                    if became_active {
+                        if let Some(hitbox) = guard.interaction_hitbox {
+                            window.capture_pointer(hitbox);
+                        }
                     }
                     cx.notify(view);
                 }
@@ -1726,6 +1796,10 @@ impl Element for DockInteractionLayer {
                 }
                 let drag = state.borrow_mut().drag.take().unwrap();
                 window.release_pointer();
+                if !drag.active {
+                    cx.notify(view);
+                    return;
+                }
                 let layout = state.borrow().layout.clone();
                 let destination = layout.as_ref().and_then(|layout| {
                     state
@@ -1804,8 +1878,9 @@ impl Element for DockInteractionLayer {
             }
         });
         let drag = state.borrow().drag.clone();
-        if let Some(drag) = drag {
-            let color = gpui::rgba(0x7c86ff55);
+        if let Some(drag) = drag.filter(|drag| drag.active) {
+            let theme = state.borrow().theme.clone();
+            let color = with_alpha(theme.accent, 0.35);
             if let Some(target_bounds) =
                 live_destination_preview_bounds(&drag, &state.borrow().tab_group_bounds)
             {
@@ -1834,7 +1909,7 @@ impl Element for DockInteractionLayer {
                 gpui::point(drag.position.x + px(8.0), drag.position.y + px(8.0)),
                 size(px(96.0), px(24.0)),
             );
-            window.paint_quad(gpui::fill(ghost, gpui::rgba(0x303746e6)));
+            window.paint_quad(gpui::fill(ghost, with_alpha(theme.bg, 0.90)));
         }
     }
 }
@@ -1848,6 +1923,7 @@ impl IntoElement for DockInteractionLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn tabs(id: &str, panels: &[&str]) -> DockLayout {
         DockLayout::Tabs {
             id: id.into(),
@@ -1958,7 +2034,9 @@ mod tests {
             source_node: "left".into(),
             preview: DropTarget::Center,
             target_node: "stale".into(),
+            origin: gpui::point(px(100.0), px(15.0)),
             position: gpui::point(px(400.0), px(180.0)),
+            active: true,
         };
         let live = [TabGroupBounds {
             node_id: "right".into(),
@@ -1967,5 +2045,12 @@ mod tests {
 
         assert!(live_destination_preview_bounds(&drag, &[]).is_none());
         assert!(live_destination_preview_bounds(&drag, &live).is_none());
+
+        let pending = DragState {
+            target_node: "right".into(),
+            active: false,
+            ..drag
+        };
+        assert!(live_destination_preview_bounds(&pending, &live).is_none());
     }
 }

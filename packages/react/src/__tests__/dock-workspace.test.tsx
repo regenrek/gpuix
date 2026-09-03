@@ -1,8 +1,13 @@
 import React, { useState } from "react"
 import fs from "fs"
 import { describe, expect, it } from "vitest"
-import { DockWorkspace, type DockLayout, type DockPanel } from "../components/dock-workspace.js"
+import {
+  DockWorkspace,
+  type DockLayout,
+  type DockPanel,
+} from "../components/dock-workspace.js"
 import { createTestRoot, hasNativeTestRenderer } from "../testing.js"
+import type { GpuixTheme } from "../types/host.js"
 import { expectScreenshotsDiffer, SHOTS_DIR } from "./test-utils.js"
 
 const describeNative = hasNativeTestRenderer ? describe : describe.skip
@@ -12,6 +17,20 @@ const panels: DockPanel[] = [
   { id: "b", label: "B", content: <div testId="panel-b">panel b</div>, closable: true },
   { id: "c", label: "C", content: <div testId="panel-c">panel c</div>, closable: true },
 ]
+
+const customTheme: GpuixTheme = {
+  bg: "#110011",
+  border: "#ff00ff",
+  text: "#ffffff",
+  textMuted: "#dddddd",
+  accent: "#aa00aa",
+  metrics: {
+    dockTabHeight: 28,
+    dockTabPaddingX: 6,
+    dockControlGap: 3,
+    dockControlPaddingX: 3,
+  },
+}
 
 function ControlledDock({
   initialLayout,
@@ -47,6 +66,55 @@ function panelIds(layout: DockLayout): string[] {
 }
 
 describeNative("DockWorkspace", () => {
+  it("forwards one complete theme contract to native dock chrome", () => {
+    const root = createTestRoot()
+    const layout = { kind: "tabs", id: "root", panels: ["a"], active: "a" } satisfies DockLayout
+    const defaultShot = `${SHOTS_DIR}/dock-default-theme.png`
+    const customShot = `${SHOTS_DIR}/dock-custom-theme.png`
+    if (fs.existsSync(defaultShot)) fs.unlinkSync(defaultShot)
+    if (fs.existsSync(customShot)) fs.unlinkSync(customShot)
+
+    root.render(<DockWorkspace layout={layout} panels={panels} style={{ width: 320, height: 180 }} testId="workbench" />)
+    root.renderer.captureScreenshot(defaultShot)
+    root.render(
+      <DockWorkspace
+        layout={layout}
+        panels={panels}
+        theme={customTheme}
+        style={{ width: 320, height: 180 }}
+        testId="workbench"
+      />,
+    )
+    root.renderer.captureScreenshot(customShot)
+
+    expect(root.renderer.findByTestId("workbench")?.customProps?.theme).toEqual(customTheme)
+    expectScreenshotsDiffer(defaultShot, customShot)
+  })
+
+  it("keeps long multi-tab headers inside the native workbench width", () => {
+    const root = createTestRoot()
+    const commits: DockLayout[] = []
+    const densePanels: DockPanel[] = ["a", "b", "c", "d", "e"].map((id) => ({
+      id,
+      label: `Long conversation title ${id.toUpperCase()}`,
+      content: <div>{`panel ${id}`}</div>,
+      closable: true,
+    }))
+    root.render(
+      <DockWorkspace
+        layout={{ kind: "tabs", id: "root", panels: ["a", "b", "c", "d", "e"], active: "a" }}
+        panels={densePanels}
+        onLayoutChange={(next) => commits.push(next)}
+        style={{ width: 320, height: 180 }}
+      />,
+    )
+
+    root.renderer.nativeSimulateClick(288, 14)
+
+    expect(commits.at(-1)).toMatchObject({ kind: "tabs", id: "root", active: "e" })
+    expect(root.renderer.getPaintedText()).toContain("panel e")
+  })
+
   it("keeps active panel inputs pointer-interactive", () => {
     const root = createTestRoot()
 
@@ -221,11 +289,11 @@ describeNative("DockWorkspace", () => {
     root.renderer.nativeSimulateMouseUp(12, 15)
     expect(commits).toHaveLength(1)
 
-    root.renderer.nativeSimulateClick(594, 35)
+    root.renderer.nativeSimulateClick(765, 35)
     expect(commits).toHaveLength(2)
     expect(commits[1]).toMatchObject({ kind: "tabs", panels: ["a"] })
 
-    root.renderer.nativeSimulateClick(55, 35)
+    root.renderer.nativeSimulateClick(784, 35)
     expect(commits).toHaveLength(3)
     expect(JSON.stringify(commits[2])).toContain('"zoomed":"a"')
   })

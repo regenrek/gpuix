@@ -13,6 +13,7 @@ export const SHOTS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../screenshots"
 )
+fs.mkdirSync(SHOTS_DIR, { recursive: true })
 
 /** Assert two screenshot PNGs exist, are non-empty, and differ.
  *  Skipped on CI — Metal on macOS VMs doesn't repaint between captures,

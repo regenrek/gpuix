@@ -195,6 +195,12 @@ export interface SyntaxTheme {
  * heading scale is a React re-render and needs no native rebuild.
  */
 export interface GpuixMetrics {
+  // Dock workspaces
+  dockTabHeight?: number
+  dockTabPaddingX?: number
+  dockControlGap?: number
+  dockControlPaddingX?: number
+
   // Terminals
   terminalTextSize?: number
   terminalLineHeight?: number

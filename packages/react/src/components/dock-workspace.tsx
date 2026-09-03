@@ -1,7 +1,7 @@
 import { createElement, Fragment } from "react"
 import type { ReactElement, ReactNode } from "react"
 import type { EventPayload } from "@regenrek/gpuix-native"
-import type { StyleDesc } from "../types/host.js"
+import type { GpuixTheme, StyleDesc } from "../types/host.js"
 
 /** A normalized, serializable generic workbench tree. Panel and node IDs are
  * caller-owned strings, so unrelated React edits never change layout identity. */
@@ -32,12 +32,15 @@ export interface DockPanel {
   closable?: boolean
 }
 
+/** Native dock chrome. Geometry and interaction remain owned by GPUIX. */
 export interface DockWorkspaceProps {
   /** Controlled tree. Native code normalizes all committed mutations. */
   layout: DockLayout
   /** Generic panel descriptors; content identity follows the stable string ID. */
   panels: readonly DockPanel[]
   style?: StyleDesc
+  /** Shared native theme; dock chrome uses its core palette and dock metrics. */
+  theme?: GpuixTheme
   testId?: string
   /** Receives one committed normalized tree after a native tab/drop action. */
   onLayoutChange?: (layout: DockLayout) => void
@@ -60,6 +63,7 @@ export function DockWorkspace({
   panels,
   onLayoutChange,
   focusPanelId,
+  theme,
   accessibilityName = "Workbench",
   ...props
 }: DockWorkspaceProps): ReactElement {
@@ -74,6 +78,7 @@ export function DockWorkspace({
       panelIds,
       labels,
       closable,
+      theme,
       focusPanelId,
       tabIndex: props.tabIndex ?? 0,
       accessibilityRole: "group",

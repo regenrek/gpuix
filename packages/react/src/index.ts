@@ -67,7 +67,11 @@ export type { WindowSize } from "./hooks/use-window-size.js"
 // Re-export types
 export type { MotionDivProps, WindowedVirtualListProps } from "./components/index.js"
 export type { SplitViewProps } from "./components/split-view.js"
-export type { DockLayout, DockPanel, DockWorkspaceProps } from "./components/dock-workspace.js"
+export type {
+  DockLayout,
+  DockPanel,
+  DockWorkspaceProps,
+} from "./components/dock-workspace.js"
 export type {
   DebugFrameOverlayMode,
   DebugFrameOverlayStats,
@@ -86,6 +90,8 @@ export type {
   BrowserNavigationIntentKind,
   BrowserNavigationEvent,
   BrowserSurfaceProps,
+  GpuixMetrics,
+  GpuixTheme,
   StyleDesc,
   TerminalProps,
   AppshotPermission,

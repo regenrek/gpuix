@@ -1,5 +1,16 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.13
+
+### Minor Changes
+
+- Add compact, theme-aware DockWorkspace tabs that share available width, truncate long labels, and keep secondary controls on the active tab.
+
+### Patch Changes
+
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.13
+
 ## 0.5.0-regenrek.12
 
 ### Patch Changes

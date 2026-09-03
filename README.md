@@ -1259,6 +1259,7 @@ Bash, TOML, YAML, Markdown, HTML, CSS, C.
 | `textarea`      | Native multiline, auto-growing text editor       |
 | `virtual-list`  | Long collections; only visible rows are built    |
 | `SplitView`     | Native two-pane resizable layout                 |
+| `DockWorkspace` | Controlled native tabs, splits, and drag/drop    |
 | `img`           | Local raster or SVG images                       |
 | `svg`           | Tintable monochrome SVG icons from source or disk |
 | `anchored`      | Positioned overlay                               |
@@ -1291,6 +1292,40 @@ then clamped to both minimum sizes. Dragging, pointer capture, cursor feedback,
 painting, and continuous geometry run in native GPUI. `onResize` fires once
 only when a drag ends. A pointer leaving the split, a split-bounds change, or
 unmounting cancels the drag without an event.
+
+### DockWorkspace
+
+`DockWorkspace` renders a controlled tree of native tab groups and nested
+splits. GPUIX owns tab hit geometry, divider resize, close, zoom, focus, and
+drag/drop. React receives only a normalized layout after an accepted mutation.
+
+```tsx
+import { DockWorkspace, type DockLayout } from "@regenrek/gpuix-react"
+
+<DockWorkspace
+  layout={layout satisfies DockLayout}
+  panels={panels}
+  onLayoutChange={setLayout}
+  theme={{
+    bg: "#0b0d12",
+    border: "#2c3240",
+    text: "#f4f6ff",
+    textMuted: "#9ba3b7",
+    accent: "#7c86ff",
+    metrics: {
+      dockTabHeight: 28,
+      dockTabPaddingX: 6,
+      dockControlGap: 3,
+      dockControlPaddingX: 3,
+    },
+  }}
+/>
+```
+
+Tabs share the available native header width, truncate long labels, and expose
+close and zoom controls only on the active tab. Theme colours come from the
+shared `GpuixTheme` palette; the four dock layout values live only in
+`GpuixTheme.metrics`.
 
 ## Images and icons
 

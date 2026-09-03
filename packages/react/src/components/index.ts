@@ -31,7 +31,11 @@ export type GpuixComponentType = keyof typeof gpuixComponents
 export { SplitView } from "./split-view.js"
 export type { SplitViewProps } from "./split-view.js"
 export { DockWorkspace } from "./dock-workspace.js"
-export type { DockLayout, DockPanel, DockWorkspaceProps } from "./dock-workspace.js"
+export type {
+  DockLayout,
+  DockPanel,
+  DockWorkspaceProps,
+} from "./dock-workspace.js"
 
 export interface MotionDivProps extends MotionProps {
   children?: ReactNode

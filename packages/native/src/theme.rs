@@ -192,7 +192,7 @@ impl SyntaxPalette {
 
 // ── Metrics ──────────────────────────────────────────────────────────
 
-/// Every number that decides layout in `<code>`, `<diff>` and `<markdown>`.
+/// Every number that decides layout in the native document and workspace components.
 ///
 /// These used to be Rust `const`s, which meant that tuning a row height needed
 /// a native rebuild. They travel in the `theme` prop instead, so the whole
@@ -204,6 +204,12 @@ impl SyntaxPalette {
 /// height up front.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
+    // Dock workspaces.
+    pub dock_tab_height: f32,
+    pub dock_tab_padding_x: f32,
+    pub dock_control_gap: f32,
+    pub dock_control_padding_x: f32,
+
     // Terminals.
     pub terminal_text_size: f32,
     pub terminal_line_height: f32,
@@ -275,6 +281,10 @@ impl Metrics {
                 log::warn!("ignoring invalid theme metric {value}");
             }
         };
+        set(&mut self.dock_tab_height, o.dock_tab_height);
+        set(&mut self.dock_tab_padding_x, o.dock_tab_padding_x);
+        set(&mut self.dock_control_gap, o.dock_control_gap);
+        set(&mut self.dock_control_padding_x, o.dock_control_padding_x);
         set(&mut self.terminal_text_size, o.terminal_text_size);
         set(&mut self.terminal_line_height, o.terminal_line_height);
         set(&mut self.terminal_padding_x, o.terminal_padding_x);
@@ -353,6 +363,10 @@ impl Metrics {
     pub fn hash_into(&self, hasher: &mut impl std::hash::Hasher) {
         let mut feed = |value: f32| hasher.write_u32(value.to_bits());
         for value in [
+            self.dock_tab_height,
+            self.dock_tab_padding_x,
+            self.dock_control_gap,
+            self.dock_control_padding_x,
             self.terminal_text_size,
             self.terminal_line_height,
             self.terminal_padding_x,
@@ -399,6 +413,11 @@ impl Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Self {
+            dock_tab_height: 30.0,
+            dock_tab_padding_x: 8.0,
+            dock_control_gap: 4.0,
+            dock_control_padding_x: 4.0,
+
             terminal_text_size: 13.0,
             terminal_line_height: 19.0,
             terminal_padding_x: 10.0,
@@ -446,8 +465,9 @@ impl Default for Metrics {
 /// The token set the native text components paint with.
 ///
 /// This is a trimmed Comet theme: only tokens read by the native editors and
-/// document elements remain. Surfaces, buttons and chrome tokens are the host
-/// app's business and stay in JS as ordinary `style` props.
+/// document elements remain. Host-rendered surfaces and buttons stay in JS as
+/// ordinary `style` props; native workspace chrome derives from these shared
+/// semantic tokens so it stays aligned with the host theme.
 #[derive(Debug, Clone)]
 pub struct Theme {
     /// Content plane behind code and diff bodies.
@@ -618,7 +638,7 @@ fn set(slot: &mut Hsla, value: &Option<String>) {
     }
 }
 
-fn with_alpha(mut color: Hsla, alpha: f32) -> Hsla {
+pub(crate) fn with_alpha(mut color: Hsla, alpha: f32) -> Hsla {
     color.a = alpha;
     color
 }
@@ -678,6 +698,11 @@ pub struct ThemeOverride {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MetricsOverride {
+    pub dock_tab_height: Option<f64>,
+    pub dock_tab_padding_x: Option<f64>,
+    pub dock_control_gap: Option<f64>,
+    pub dock_control_padding_x: Option<f64>,
+
     pub terminal_text_size: Option<f64>,
     pub terminal_line_height: Option<f64>,
     pub terminal_padding_x: Option<f64>,
@@ -821,10 +846,11 @@ mod tests {
     fn metrics_override_touches_only_named_numbers() {
         let base = Theme::dark();
         let o: ThemeOverride = serde_json::from_str(
-            r#"{ "metrics": { "diffLineHeight": 30, "mdHeadingSizes": [40, 32] } }"#,
+            r#"{ "metrics": { "dockTabHeight": 28, "diffLineHeight": 30, "mdHeadingSizes": [40, 32] } }"#,
         )
         .unwrap();
         let t = base.clone().with_override(&o);
+        assert_eq!(t.metrics.dock_tab_height, 28.0);
         assert_eq!(t.metrics.diff_line_height, 30.0);
         assert_eq!(t.metrics.md_heading_sizes[0], 40.0);
         assert_eq!(t.metrics.md_heading_sizes[1], 32.0);
@@ -852,6 +878,10 @@ mod tests {
         let mut heading = base;
         heading.md_heading_sizes[2] += 1.0;
         assert_ne!(hash(&base), hash(&heading));
+
+        let mut dock = base;
+        dock.dock_tab_padding_x += 1.0;
+        assert_ne!(hash(&base), hash(&dock));
         assert_eq!(hash(&base), hash(&Metrics::default()));
     }
 
