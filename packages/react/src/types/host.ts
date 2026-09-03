@@ -343,6 +343,14 @@ export interface Props {
   motion?: MotionProps
 }
 
+/**
+ * Reconciliation-only JSX attributes accepted by every GPUIX host intrinsic.
+ *
+ * React consumes these attributes before host props are serialized, so they do
+ * not belong to Props or any native custom-element prop type.
+ */
+export type JsxIntrinsicProps<T> = T & React.Attributes
+
 // Props for native text editor elements.
 export interface InputProps extends Props {
   /** External editor value. Native edits apply immediately and report through onChange. */

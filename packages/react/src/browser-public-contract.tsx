@@ -62,8 +62,16 @@ const browserSurfaceProps: BrowserSurfaceProps = {
 }
 
 export const browserPublicContract = <browser-surface {...browserSurfaceProps} />
+export const keyedBrowserPublicContract = <browser-surface key="browser-surface" {...browserSurfaceProps} />
+
+const browserSurfacePropsRejectReconciliationKey: BrowserSurfaceProps = {
+  profileId: "profile",
+  // @ts-expect-error React consumes key before GPUIX serializes host props.
+  key: "browser-surface",
+}
 
 void loading
 void navigation
 void dataCleared
 void destinationSelected
+void browserSurfacePropsRejectReconciliationKey

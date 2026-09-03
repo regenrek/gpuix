@@ -1,5 +1,12 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.15
+
+### Patch Changes
+
+- Allow React reconciliation keys on every GPUIX host intrinsic without forwarding them to native props.
+- @regenrek/gpuix-native@0.5.0-regenrek.15
+
 ## 0.5.0-regenrek.14
 
 ### Patch Changes

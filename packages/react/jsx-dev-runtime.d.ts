@@ -8,6 +8,7 @@ import type {
   DiffProps,
   ImgProps,
   InputProps,
+  JsxIntrinsicProps,
   MarkdownProps,
   Props,
   SvgProps,
@@ -28,19 +29,19 @@ export namespace JSX {
   type IntrinsicClassAttributes<T> = React.JSX.IntrinsicClassAttributes<T>
 
   interface IntrinsicElements {
-    div: Props
-    text: Props
-    img: ImgProps
-    svg: SvgProps
-    canvas: CanvasProps
-    input: InputProps
-    textarea: TextareaProps
-    anchored: AnchoredProps
-    code: CodeProps
-    diff: DiffProps
-    markdown: MarkdownProps
-    terminal: TerminalProps
-    "browser-surface": BrowserSurfaceProps
-    "virtual-list": VirtualListProps
+    div: JsxIntrinsicProps<Props>
+    text: JsxIntrinsicProps<Props>
+    img: JsxIntrinsicProps<ImgProps>
+    svg: JsxIntrinsicProps<SvgProps>
+    canvas: JsxIntrinsicProps<CanvasProps>
+    input: JsxIntrinsicProps<InputProps>
+    textarea: JsxIntrinsicProps<TextareaProps>
+    anchored: JsxIntrinsicProps<AnchoredProps>
+    code: JsxIntrinsicProps<CodeProps>
+    diff: JsxIntrinsicProps<DiffProps>
+    markdown: JsxIntrinsicProps<MarkdownProps>
+    terminal: JsxIntrinsicProps<TerminalProps>
+    "browser-surface": JsxIntrinsicProps<BrowserSurfaceProps>
+    "virtual-list": JsxIntrinsicProps<VirtualListProps>
   }
 }
