@@ -1,5 +1,13 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.12
+
+### Patch Changes
+
+- Run application cleanup before the last embedded macOS window exits.
+- Updated dependencies
+  - @regenrek/gpuix-native@0.5.0-regenrek.12
+
 ## 0.5.0-regenrek.11
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @regenrek/gpuix-native
 
+## 0.5.0-regenrek.12
+
+### Patch Changes
+
+- Run application cleanup before the last embedded macOS window exits.
+
 ## 0.5.0-regenrek.11
 
 ## 0.5.0-regenrek.10
