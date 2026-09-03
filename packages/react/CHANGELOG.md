@@ -1,5 +1,12 @@
 # @regenrek/gpuix-react
 
+## 0.5.0-regenrek.14
+
+### Patch Changes
+
+- Dispose each GPU-backed test renderer's native state after React test-root teardown so consecutive and concurrent roots remain isolated.
+- @regenrek/gpuix-native@0.5.0-regenrek.14
+
 ## 0.5.0-regenrek.13
 
 ### Minor Changes

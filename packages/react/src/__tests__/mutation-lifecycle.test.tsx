@@ -126,6 +126,7 @@ describeNative("mutation lifecycle", () => {
       expect(onRemovedClick).not.toHaveBeenCalled()
     } finally {
       root.unmount()
+      renderer.dispose()
     }
   })
 
@@ -160,6 +161,11 @@ describeNative("mutation lifecycle", () => {
       handleGpuixEvent(click, b.renderer)
       expect(onA).toHaveBeenCalledTimes(1)
       expect(onB).toHaveBeenCalledTimes(1)
+
+      a.renderer.nativeSimulateClick(10, 10)
+      b.renderer.nativeSimulateClick(10, 10)
+      expect(onA).toHaveBeenCalledTimes(2)
+      expect(onB).toHaveBeenCalledTimes(2)
     } finally {
       a.unmount()
       b.unmount()
@@ -193,6 +199,48 @@ describeNative("mutation lifecycle", () => {
       expect(onSecond).not.toHaveBeenCalled()
     } finally {
       second.unmount()
+      renderer.dispose()
     }
+  })
+
+  it("does not let stale-owner disposal remove a concurrent renderer", () => {
+    const first = createTestRoot()
+    const second = createTestRoot()
+
+    try {
+      first.render(<text>first</text>)
+      second.render(<text>second</text>)
+
+      first.unmount()
+      expect(() => first.renderer.flush()).toThrow("TestGpuixRenderer has been disposed")
+
+      second.renderer.flush()
+      expect(second.renderer.getPaintedText()).toEqual(["second"])
+    } finally {
+      second.unmount()
+    }
+  })
+
+  it("creates a fresh native state for sequential roots", () => {
+    const first = createTestRoot()
+    first.render(<text>first</text>)
+    first.unmount()
+
+    const second = createTestRoot()
+    try {
+      second.render(<text>second</text>)
+      expect(second.renderer.getPaintedText()).toEqual(["second"])
+    } finally {
+      second.unmount()
+    }
+  })
+
+  it("rejects use after an idempotent renderer disposal", () => {
+    const renderer = new TestRenderer()
+
+    renderer.dispose()
+    renderer.dispose()
+
+    expect(() => renderer.flush()).toThrow("TestGpuixRenderer has been disposed")
   })
 })

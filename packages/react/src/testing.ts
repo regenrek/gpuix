@@ -26,6 +26,7 @@ export {
 export type { MacCpuThrottle } from "./cpu-throttle.js"
 
 interface NativeTestRendererApi extends NativeRenderer {
+  dispose(): void
   setAppshotPermission(granted: boolean): void
   setAppshotSelection(selected: boolean): void
   triggerGlobalShortcut(token: string): void
@@ -122,6 +123,11 @@ export class TestRenderer implements NativeRenderer {
       )
     }
     this.native = new NativeTestRenderer()
+  }
+
+  /** Release this renderer's native test state. Safe to call repeatedly. */
+  dispose(): void {
+    this.native.dispose()
   }
 
   /** Set the next deterministic directory-picker result for a React test. */
@@ -656,6 +662,7 @@ export function createTestRoot(): TestRoot {
   const unmount = (): void => {
     root.unmount()
     renderer.flush()
+    renderer.dispose()
   }
 
   return {

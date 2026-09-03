@@ -181,6 +181,11 @@ export declare class GpuixRenderer {
 export declare class TestGpuixRenderer {
   constructor()
   /**
+   * Release this renderer's native GPUI state. Safe to call repeatedly;
+   * it never removes a concurrent renderer's state.
+   */
+  dispose(): void
+  /**
    * Deterministic appshot permission state. This double never opens a
    * system picker or captures a real window.
    */

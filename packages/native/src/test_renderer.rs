@@ -11,6 +11,7 @@
 /// VisualTestAppContext is !Send, so it is stored in thread-local state.
 /// All napi calls happen on the JS main thread.
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -42,25 +43,55 @@ struct VisualTestState {
     cx: gpui::VisualTestAppContext,
 }
 
+struct TestStates {
+    next_owner_id: u64,
+    states: HashMap<u64, VisualTestState>,
+}
+
 thread_local! {
-    static TEST_STATE: RefCell<Option<VisualTestState>> = const { RefCell::new(None) };
+    static TEST_STATES: RefCell<TestStates> = RefCell::new(TestStates {
+        next_owner_id: 0,
+        states: HashMap::new(),
+    });
+}
+
+fn insert_test_state(state: VisualTestState) -> u64 {
+    TEST_STATES.with(|cell| {
+        let mut states = cell.borrow_mut();
+        let owner_id = states.next_owner_id;
+        states.next_owner_id = states
+            .next_owner_id
+            .checked_add(1)
+            .expect("TestGpuixRenderer owner id overflow");
+        states.states.insert(owner_id, state);
+        owner_id
+    })
+}
+
+/// Remove only the state owned by this renderer. Missing state is already
+/// disposed, so this boundary is deliberately idempotent.
+fn dispose_test_state(owner_id: u64) {
+    let state = TEST_STATES.with(|cell| cell.borrow_mut().states.remove(&owner_id));
+    drop(state);
 }
 
 /// Access VisualTestAppContext + window + view mutably within thread_local.
 /// The closure receives (&mut cx, window_handle, &view_entity).
-/// Returns Err if no TestGpuixRenderer has been created on this thread.
+/// Returns Err if this TestGpuixRenderer has already been disposed.
 fn with_test_state<R>(
+    owner_id: u64,
     f: impl FnOnce(
         &mut gpui::VisualTestAppContext,
         gpui::AnyWindowHandle,
         &gpui::Entity<GpuixView>,
     ) -> Result<R>,
 ) -> Result<R> {
-    TEST_STATE.with(|cell| {
+    TEST_STATES.with(|cell| {
         let mut borrow = cell.borrow_mut();
         let state = borrow
-            .as_mut()
-            .ok_or_else(|| Error::from_reason("TestGpuixRenderer not initialized"))?;
+            .states
+            .get_mut(&owner_id)
+            .ok_or_else(|| Error::from_reason("TestGpuixRenderer has been disposed"))?;
         f(&mut state.cx, state.window, &state.view)
     })
 }
@@ -91,6 +122,7 @@ fn u32_to_mouse_button(button: u32) -> gpui::MouseButton {
 ///   r.captureScreenshot("/tmp/test.png")  // saves rendered UI as PNG
 #[napi]
 pub struct TestGpuixRenderer {
+    owner_id: u64,
     tree: Arc<Mutex<RetainedTree>>,
     events: Arc<Mutex<Vec<EventPayload>>>,
     /// Same handle GpuixView paints against, so tests can assert on the live
@@ -101,6 +133,7 @@ pub struct TestGpuixRenderer {
 
 impl Drop for TestGpuixRenderer {
     fn drop(&mut self) {
+        dispose_test_state(self.owner_id);
         self.appshot.lock().unwrap().dispose_all();
     }
 }
@@ -158,17 +191,24 @@ impl TestGpuixRenderer {
         // Convert typed WindowHandle<GpuixView> to AnyWindowHandle for simulation methods.
         let window: gpui::AnyWindowHandle = window_handle.into();
 
-        // Store !Send types on the JS main thread.
-        TEST_STATE.with(|cell| {
-            *cell.borrow_mut() = Some(VisualTestState { cx, window, view });
-        });
+        // Store !Send types on the JS main thread under this renderer's owner id.
+        let owner_id = insert_test_state(VisualTestState { cx, window, view });
 
         Ok(Self {
+            owner_id,
             tree,
             events,
             selection,
             appshot,
         })
+    }
+
+    /// Release this renderer's native GPUI state. Safe to call repeatedly;
+    /// it never removes a concurrent renderer's state.
+    #[napi]
+    pub fn dispose(&self) {
+        dispose_test_state(self.owner_id);
+        self.appshot.lock().unwrap().dispose_all();
     }
 
     /// Deterministic appshot permission state. This double never opens a
@@ -392,7 +432,7 @@ impl TestGpuixRenderer {
             .decode(data_base64)
             .map_err(|error| Error::from_reason(format!("invalid terminal data: {error}")))?;
 
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, window, app| {
                 view.update(app, |view, cx| {
@@ -428,7 +468,7 @@ impl TestGpuixRenderer {
             }
         }
 
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, window, app| {
                 view.update(app, |view, cx| {
@@ -472,7 +512,7 @@ impl TestGpuixRenderer {
     /// hit testing requires elements to be laid out).
     #[napi]
     pub fn flush(&self) -> Result<()> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, _window, app| {
                 view.update(app, |_, cx| {
@@ -492,7 +532,7 @@ impl TestGpuixRenderer {
     /// IMPORTANT: Call flush() before this — hit testing requires laid-out elements.
     #[napi]
     pub fn simulate_click(&self, x: f64, y: f64) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_click(
                 window,
                 gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -507,7 +547,7 @@ impl TestGpuixRenderer {
     /// The focused element receives keyDown/keyUp events.
     #[napi]
     pub fn simulate_keystrokes(&self, keystrokes: String) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_keystrokes(window, &keystrokes);
             Ok(())
         })
@@ -517,7 +557,7 @@ impl TestGpuixRenderer {
     /// This is the production IME insertion path, not a synthesized key event.
     #[napi]
     pub fn simulate_input(&self, input: String) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_input(window, &input);
             Ok(())
         })
@@ -530,7 +570,7 @@ impl TestGpuixRenderer {
     /// fine-grained key event testing.
     #[napi]
     pub fn simulate_key_down(&self, keystroke: String, is_held: Option<bool>) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             let parsed = gpui::Keystroke::parse(&keystroke).map_err(|e| {
                 Error::from_reason(format!("Invalid keystroke '{}': {}", keystroke, e))
             })?;
@@ -553,7 +593,7 @@ impl TestGpuixRenderer {
     /// Pairs with simulate_key_down for fine-grained key event testing.
     #[napi]
     pub fn simulate_key_up(&self, keystroke: String) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             let parsed = gpui::Keystroke::parse(&keystroke).map_err(|e| {
                 Error::from_reason(format!("Invalid keystroke '{}': {}", keystroke, e))
             })?;
@@ -569,7 +609,7 @@ impl TestGpuixRenderer {
     /// Used to simulate drag events.
     #[napi]
     pub fn simulate_mouse_move(&self, x: f64, y: f64, pressed_button: Option<u32>) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             let button: Option<gpui::MouseButton> = pressed_button.map(u32_to_mouse_button);
 
             cx.simulate_mouse_move(
@@ -591,7 +631,7 @@ impl TestGpuixRenderer {
     pub fn focus_element(&self, id: f64) -> Result<()> {
         let id = to_element_id(id)?;
 
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
 
             cx.update_window(window, |_, window, app| {
@@ -614,7 +654,7 @@ impl TestGpuixRenderer {
     /// Button: 0=left, 1=middle, 2=right. Defaults to left (0).
     #[napi]
     pub fn simulate_mouse_down(&self, x: f64, y: f64, button: Option<u32>) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_mouse_down(
                 window,
                 gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -629,7 +669,7 @@ impl TestGpuixRenderer {
     /// Button: 0=left, 1=middle, 2=right. Defaults to left (0).
     #[napi]
     pub fn simulate_mouse_up(&self, x: f64, y: f64, button: Option<u32>) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_mouse_up(
                 window,
                 gpui::point(gpui::px(x as f32), gpui::px(y as f32)),
@@ -644,7 +684,7 @@ impl TestGpuixRenderer {
     /// delta_x and delta_y are in pixels (negative = scroll up/left).
     #[napi]
     pub fn simulate_scroll_wheel(&self, x: f64, y: f64, delta_x: f64, delta_y: f64) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.simulate_event(
                 window,
                 gpui::ScrollWheelEvent {
@@ -727,7 +767,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn scroll_to(&self, element_id: f64, x: f64, y: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, _window, app| {
                 view.update(app, |view, _cx| {
@@ -750,7 +790,7 @@ impl TestGpuixRenderer {
     pub fn scroll_to_item(&self, element_id: f64, index: f64) -> Result<()> {
         let id = to_element_id(element_id)?;
         let index = index as usize;
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             cx.update_window(window, |_, _window, app| {
                 view.update(app, |view, _cx| {
@@ -771,7 +811,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn set_debug_frame_overlay(&self, mode: String) -> Result<String> {
         let mode = parse_debug_frame_overlay_mode(&mode)?;
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.update_window(window, |_, window, _app| {
                 window.set_debug_frame_overlay_mode(mode);
                 debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
@@ -783,7 +823,7 @@ impl TestGpuixRenderer {
     /// Hidden → minimal → full → hidden.
     #[napi]
     pub fn cycle_debug_frame_overlay(&self) -> Result<String> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.update_window(window, |_, window, _app| {
                 window.cycle_debug_frame_overlay_mode();
                 debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
@@ -794,7 +834,7 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn get_debug_frame_overlay(&self) -> Result<String> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.update_window(window, |_, window, _app| {
                 debug_frame_overlay_mode_name(window.debug_frame_overlay_mode()).to_string()
             })
@@ -805,7 +845,7 @@ impl TestGpuixRenderer {
     /// Clears the last 1000 draw samples. Frame count stays.
     #[napi]
     pub fn reset_debug_frame_overlay_stats(&self) -> Result<()> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.update_window(window, |_, window, _app| {
                 window.reset_debug_frame_overlay_stats();
             })
@@ -817,7 +857,7 @@ impl TestGpuixRenderer {
     /// Same numbers as the on-screen overlay: current, p90, p99, max, frames.
     #[napi]
     pub fn get_debug_frame_overlay_stats(&self) -> Result<DebugFrameOverlayStats> {
-        with_test_state(|cx, window, _view| {
+        with_test_state(self.owner_id, |cx, window, _view| {
             cx.update_window(window, |_, window, _app| {
                 debug_frame_overlay_stats_js(window.debug_frame_overlay_stats())
             })
@@ -830,7 +870,7 @@ impl TestGpuixRenderer {
     #[napi]
     pub fn get_scroll_offset(&self, element_id: f64) -> Result<Option<Vec<f64>>> {
         let id = to_element_id(element_id)?;
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             let result = cx
                 .update_window(window, |_, _window, app| {
@@ -856,7 +896,7 @@ impl TestGpuixRenderer {
     /// macOS only — requires Metal GPU rendering via VisualTestAppContext.
     #[napi]
     pub fn capture_screenshot(&self, path: String) -> Result<()> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
 
             // Flush: notify view and run until parked so layout/rendering are current.
@@ -970,7 +1010,7 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn clock_pause(&self) -> Result<f64> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             let now_ms = cx
                 .update_window(window, |_, _window, app| {
@@ -988,7 +1028,7 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn clock_set(&self, now_ms: f64) -> Result<f64> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             let now_ms = cx
                 .update_window(window, |_, _window, app| {
@@ -1006,7 +1046,7 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn clock_fast_forward(&self, delta_ms: f64) -> Result<f64> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             let now_ms = cx
                 .update_window(window, |_, _window, app| {
@@ -1024,7 +1064,7 @@ impl TestGpuixRenderer {
 
     #[napi]
     pub fn clock_resume(&self) -> Result<f64> {
-        with_test_state(|cx, window, view| {
+        with_test_state(self.owner_id, |cx, window, view| {
             let view = view.clone();
             let now_ms = cx
                 .update_window(window, |_, _window, app| {

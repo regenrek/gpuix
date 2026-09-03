@@ -169,11 +169,16 @@ describeNative("SplitView", () => {
     )
 
     root.renderer.nativeSimulateMouseDown(200, 60)
-    root.unmount()
-    root.renderer.nativeSimulateMouseMove(250, 60, 0)
-    root.renderer.nativeSimulateMouseUp(250, 60)
+    try {
+      root.root.unmount()
+      root.renderer.flush()
+      root.renderer.nativeSimulateMouseMove(250, 60, 0)
+      root.renderer.nativeSimulateMouseUp(250, 60)
 
-    expect(commits).toEqual([])
+      expect(commits).toEqual([])
+    } finally {
+      root.renderer.dispose()
+    }
   })
 
   it("uses the vertical axis for geometry and final commit", () => {
